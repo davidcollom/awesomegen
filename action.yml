@@ -1,0 +1,12 @@
+name: "AwesomeGen"
+description: "Generate Awesome README(s) from GitHub Star Lists"
+inputs:
+  config:
+    description: "Path to config file"
+    default: "config.yaml"
+runs:
+  using: "docker"
+  image: "docker://ghcr.io/davidcollom/awesomegen:latest"
+  args:
+    - "--config"
+    - "${{ inputs.config }}"
