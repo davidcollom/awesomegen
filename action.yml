@@ -6,7 +6,7 @@ inputs:
     default: "config.yaml"
 runs:
   using: "docker"
-  image: "docker://ghcr.io/davidcollom/awesomegen:latest"
+  image: "docker://ghcr.io/davidcollom/awesomegen:v1.0.0"
   args:
     - "--config"
     - "${{ inputs.config }}"
