@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"os"
 
 	"github.com/go-logr/stdr"
@@ -16,13 +15,14 @@ import (
 
 func main() {
 	log := stdr.New(nil)
+	log.WithName("awesomegen").Info("starting awesomegen")
 
 	var cfgPath string
 	cmd := &cobra.Command{
 		Use:   "awesomegen",
 		Short: "Generate Awesome list README(s) from GitHub Star Lists",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			ctx := context.Background()
+			ctx := cmd.Context()
 			cfg, err := config.Load(cfgPath)
 			if err != nil {
 				return err
@@ -36,11 +36,22 @@ func main() {
 
 			for _, list := range cfg.Lists {
 				// 1) scrape owner/repo slugs from your Star List
-				slugs, err := sc.ListRepos(ctx, cfg.User, list.Slug)
-				if err != nil {
-					return err
+				var allSlugs []string
+				seen := map[string]struct{}{}
+				for _, src := range list.Sources {
+					slugs, err := sc.ListRepos(ctx, src.User, src.Slug)
+					if err != nil {
+						return err
+					}
+					for _, r := range slugs {
+						if _, ok := seen[r]; ok {
+							continue
+						}
+						seen[r] = struct{}{}
+						allSlugs = append(allSlugs, r)
+					}
 				}
-				list.SeedRepos(slugs)
+				list.SeedRepos(allSlugs)
 
 				// 2) enrich + filter
 				enriched, err := enr.EnrichAndFilter(ctx, list)
