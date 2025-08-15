@@ -1,0 +1,120 @@
+version: 2
+project_name: awesomegen
+
+before:
+  hooks:
+    - go mod tidy
+    - |
+      echo "Updating action.yml to use image tag ${ver}" &&
+      sed -i.bak "s|^image: docker://ghcr.io/.*/awesomegen:.*|image: docker://ghcr.io/${GH_OWNER}/awesomegen:${VERSION}|" action.yml &&
+      rm -f action.yml.bak
+
+env:
+  - CGO_ENABLED=0
+  - GH_OWNER=davidcollom
+  - VERSION="{{ .Version }}"
+
+builds:
+  - id: awesomegen
+    main: ./cmd/awesomegen
+    binary: awesomegen
+    ldflags:
+      - -s -w
+      - -X main.version={{.Version}}
+    flags:
+      - -trimpath
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    # optional: exclude windows/arm64 if you don't care
+    # ignore:
+    #   - goos: windows
+    #     goarch: arm64
+
+archives:
+  - id: archives
+    ids: [awesomegen]
+    format_overrides:
+      - goos: windows
+        formats: ["zip"]
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+    files:
+      - LICENSE
+      - README.md
+
+checksum:
+  name_template: "checksums.txt"
+  algorithm: sha256
+
+# Optional signing (cosign) – uncomment if you want to sign artifacts
+# signs:
+#   - cmd: cosign
+#     artifacts: checksum
+#     signature: "{{ .ArtifactPath }}.sig"
+
+changelog:
+  use: git
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^chore\(deps\):'
+      - '^chore: bump'
+      - Merge pull request
+
+# ---- Docker / GHCR multi-arch images ----
+# Uses your Dockerfile at repo root to build per-arch images, then creates a manifest list.
+dockers:
+  - id: img-amd64
+    use: buildx
+    image_templates:
+      - "ghcr.io/{{ .Env.GH_OWNER }}/{{ .ProjectName }}:{{ .Version }}-amd64"
+      - "ghcr.io/{{ .Env.GH_OWNER }}/{{ .ProjectName }}:{{ .Major }}-amd64"
+      - "ghcr.io/{{ .Env.GH_OWNER }}/{{ .ProjectName }}:{{ .Major }}.{{.Minor}}-amd64"
+    goos: linux
+    goarch: amd64
+    dockerfile: Dockerfile
+    build_flag_templates:
+      - "--pull"
+      - "--platform=linux/amd64"
+  - id: img-arm64
+    image_templates:
+      - "ghcr.io/{{ .Env.GH_OWNER }}/{{ .ProjectName }}:{{ .Version }}-arm64"
+      - "ghcr.io/{{ .Env.GH_OWNER }}/{{ .ProjectName }}:{{ .Major }}-arm64"
+      - "ghcr.io/{{ .Env.GH_OWNER }}/{{ .ProjectName }}:{{ .Major }}.{{.Minor}}-arm64"
+    # use: buildx
+    goos: linux
+    goarch: arm64
+    dockerfile: Dockerfile
+    build_flag_templates:
+      - "--pull"
+      - "--platform=linux/arm64"
+
+docker_manifests:
+  - name_template: "ghcr.io/{{ .Env.GH_OWNER }}/{{ .ProjectName }}:{{ .Version }}"
+    image_templates:
+      - "ghcr.io/{{ .Env.GH_OWNER }}/{{ .ProjectName }}:{{ .Version }}-arm64"
+      - "ghcr.io/{{ .Env.GH_OWNER }}/{{ .ProjectName }}:{{ .Version }}-amd64"
+  - name_template: "ghcr.io/{{ .Env.GH_OWNER }}/{{ .ProjectName }}:{{.Major}}"
+    image_templates:
+      - "ghcr.io/{{ .Env.GH_OWNER }}/{{ .ProjectName }}:{{ .Version }}-amd64"
+      - "ghcr.io/{{ .Env.GH_OWNER }}/{{ .ProjectName }}:{{ .Version }}-arm64"
+  - name_template: "ghcr.io/{{ .Env.GH_OWNER }}/{{ .ProjectName }}:{{.Major}}.{{.Minor}}"
+    image_templates:
+      - "ghcr.io/{{ .Env.GH_OWNER }}/{{ .ProjectName }}:{{ .Version }}-amd64"
+      - "ghcr.io/{{ .Env.GH_OWNER }}/{{ .ProjectName }}:{{ .Version }}-arm64"
+  - name_template: "ghcr.io/{{ .Env.GH_OWNER }}/{{ .ProjectName }}:latest"
+    image_templates:
+      - "ghcr.io/{{ .Env.GH_OWNER }}/{{ .ProjectName }}:{{ .Version }}-amd64"
+      - "ghcr.io/{{ .Env.GH_OWNER }}/{{ .ProjectName }}:{{ .Version }}-arm64"
+
+
+release:
+  # GitHub provider is default; GITHUB_TOKEN is used automatically in CI
+  draft: false
+  prerelease: false
+
+# Announce (optional)
+# announce:
+#   skip: true
