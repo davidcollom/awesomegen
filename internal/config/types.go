@@ -2,6 +2,9 @@ package config
 
 import "github.com/davidcollom/awesomegen/internal/github"
 
+// Generate a JSONSchema of the config file.
+//go:generate go run ../../cmd/schemagen/main.go ../../example/jsonschema.json
+
 type Config struct {
 	Version int    `yaml:"version"` // Configuration file version
 	User    string `yaml:"user"`    // GitHub username or owner

@@ -1,0 +1,185 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/davidcollom/awesomegen/internal/config/config",
+  "$ref": "#/$defs/Config",
+  "$defs": {
+    "Category": {
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "items": {
+          "items": {
+            "$ref": "#/$defs/Item"
+          },
+          "type": "array"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "name",
+        "items"
+      ]
+    },
+    "Config": {
+      "properties": {
+        "version": {
+          "type": "integer"
+        },
+        "user": {
+          "type": "string"
+        },
+        "lists": {
+          "items": {
+            "$ref": "#/$defs/List"
+          },
+          "type": "array"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "version",
+        "user",
+        "lists"
+      ]
+    },
+    "Item": {
+      "properties": {
+        "type": {
+          "type": "string"
+        },
+        "repo": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "notes": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "type"
+      ]
+    },
+    "List": {
+      "properties": {
+        "slug": {
+          "type": "string"
+        },
+        "sources": {
+          "items": {
+            "$ref": "#/$defs/Source"
+          },
+          "type": "array"
+        },
+        "title": {
+          "type": "string"
+        },
+        "tagline": {
+          "type": "string"
+        },
+        "output": {
+          "type": "string"
+        },
+        "min_stars": {
+          "type": "integer"
+        },
+        "stale_months": {
+          "type": "integer"
+        },
+        "badges": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "categories": {
+          "items": {
+            "$ref": "#/$defs/Category"
+          },
+          "type": "array"
+        },
+        "group_by_topic": {
+          "type": "boolean"
+        },
+        "topic_fallback": {
+          "type": "string"
+        },
+        "topic_grouping_mode": {
+          "type": "string"
+        },
+        "stars_format": {
+          "type": "string"
+        },
+        "locale": {
+          "type": "string"
+        },
+        "group_by_top_tags": {
+          "type": "boolean"
+        },
+        "top_tags_limit": {
+          "type": "integer"
+        },
+        "min_tag_count": {
+          "type": "integer"
+        },
+        "single_home": {
+          "type": "boolean"
+        },
+        "tag_aliases": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "slug",
+        "sources",
+        "title",
+        "tagline",
+        "output",
+        "min_stars",
+        "stale_months",
+        "badges",
+        "categories",
+        "group_by_topic",
+        "topic_fallback",
+        "topic_grouping_mode",
+        "stars_format",
+        "locale",
+        "group_by_top_tags",
+        "top_tags_limit",
+        "min_tag_count",
+        "single_home",
+        "tag_aliases"
+      ]
+    },
+    "Source": {
+      "properties": {
+        "user": {
+          "type": "string"
+        },
+        "slug": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "user",
+        "slug"
+      ]
+    }
+  }
+}
