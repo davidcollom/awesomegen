@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"path"
 
 	"github.com/go-logr/stdr"
 	"github.com/jonboulle/clockwork"
@@ -63,7 +64,8 @@ func main() {
 				md := render.Markdown(enriched)
 				out := list.Output
 				if out == "" {
-					out = "README.md"
+					// If we have a config file - we save the README.md to the same Dir (unless defined in config).
+					out = path.Join(path.Dir(cfgPath), "README.md")
 				}
 				if err := os.WriteFile(out, []byte(md), 0o644); err != nil {
 					return err
