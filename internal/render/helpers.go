@@ -11,11 +11,11 @@ import (
 	"golang.org/x/text/message"
 )
 
-func humanStars(n int, format, locale string) string {
+func humanStars(n int, format config.StarsFormat, locale string) string {
 	switch format {
-	case "none":
+	case config.StarsFormatNone:
 		return ""
-	case "compact":
+	case config.StarsFormatCompact:
 		switch {
 		case n >= 1_000_000:
 			return fmt.Sprintf("%.1fM", float64(n)/1_000_000)
