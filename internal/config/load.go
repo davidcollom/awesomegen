@@ -37,25 +37,13 @@ func Load(path string) (Config, error) {
 			c.Lists[i].TopicGroupingMode = "flat"
 		}
 		if c.Lists[i].StarsFormat == "" {
-			c.Lists[i].StarsFormat = "locale"
+			c.Lists[i].StarsFormat = StarsFormatLocale
 		}
 		if c.Lists[i].Locale == "" {
 			c.Lists[i].Locale = "en-GB"
 		}
 		if c.Lists[i].StaleMonths == 0 {
 			c.Lists[i].StaleMonths = 24
-		}
-		if c.Lists[i].TopicFallback == "" {
-			c.Lists[i].TopicFallback = "misc"
-		}
-		if c.Lists[i].TopicGroupingMode == "" {
-			c.Lists[i].TopicGroupingMode = "flat"
-		}
-		if c.Lists[i].StarsFormat == "" {
-			c.Lists[i].StarsFormat = "locale"
-		}
-		if c.Lists[i].Locale == "" {
-			c.Lists[i].Locale = "en-GB"
 		}
 		if c.Lists[i].TopTagsLimit == 0 {
 			c.Lists[i].TopTagsLimit = 10

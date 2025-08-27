@@ -22,11 +22,11 @@ type List struct {
 	Badges      []string   `yaml:"badges"`       // List of badge names to display
 	Categories  []Category `yaml:"categories"`   // List categories; usually one auto category "Repositories"
 
-	GroupByTopic      bool   `yaml:"group_by_topic"`      // Group repositories by GitHub topic (default: false)
-	TopicFallback     string `yaml:"topic_fallback"`      // Fallback topic name if none found (default: "misc")
-	TopicGroupingMode string `yaml:"topic_grouping_mode"` // Topic grouping style: "flat" or "nested" (default: "flat")
-	StarsFormat       string `yaml:"stars_format"`        // Format for displaying stars: "locale", "compact", "none" (default: "locale")
-	Locale            string `yaml:"locale"`              // Locale for formatting numbers, BCP-47 (default: "en-GB")
+	GroupByTopic      bool              `yaml:"group_by_topic"`      // Group repositories by GitHub topic (default: false)
+	TopicFallback     string            `yaml:"topic_fallback"`      // Fallback topic name if none found (default: "misc")
+	TopicGroupingMode TopicGroupingMode `yaml:"topic_grouping_mode"` // Topic grouping style: "flat" or "nested" (default: "flat")
+	StarsFormat       StarsFormat       `yaml:"stars_format"`        // Format for displaying stars: "locale", "compact", "none" (default: "locale")
+	Locale            string            `yaml:"locale"`              // Locale for formatting numbers, BCP-47 (default: "en-GB")
 
 	GroupByTopTags bool              `yaml:"group_by_top_tags"` // Group repositories by top tags
 	TopTagsLimit   int               `yaml:"top_tags_limit"`    // Maximum number of top tags to group by
@@ -34,6 +34,21 @@ type List struct {
 	SingleHome     bool              `yaml:"single_home"`       // If true, generate a single home page
 	TagAliases     map[string]string `yaml:"tag_aliases"`       // Map of tag aliases for normalization
 }
+
+type StarsFormat string
+
+const (
+	StarsFormatLocale  StarsFormat = "locale"
+	StarsFormatCompact StarsFormat = "compact"
+	StarsFormatNone    StarsFormat = "none"
+)
+
+type TopicGroupingMode string
+
+const (
+	TopicGroupingModeFlat   TopicGroupingMode = "flat"
+	TopicGroupingModeNested TopicGroupingMode = "nested"
+)
 
 type Source struct {
 	User string `yaml:"user"` // GitHub username or organization
