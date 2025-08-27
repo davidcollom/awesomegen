@@ -145,7 +145,6 @@
       "type": "object",
       "required": [
         "slug",
-        "sources",
         "title",
         "tagline",
         "output",

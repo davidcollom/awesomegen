@@ -12,15 +12,15 @@ type Config struct {
 }
 
 type List struct {
-	Slug        string     `yaml:"slug"`         // Unique identifier for the list
-	Sources     []Source   `yaml:"sources"`      // List of sources (users/repos) to include
-	Title       string     `yaml:"title"`        // Title of the list
-	Tagline     string     `yaml:"tagline"`      // Short description or tagline
-	Output      string     `yaml:"output"`       // Output file path or name
-	MinStars    int        `yaml:"min_stars"`    // Minimum GitHub stars required for inclusion
-	StaleMonths int        `yaml:"stale_months"` // Months since last update to consider stale
-	Badges      []string   `yaml:"badges"`       // List of badge names to display
-	Categories  []Category `yaml:"categories"`   // List categories; usually one auto category "Repositories"
+	Slug        string     `yaml:"slug"`              // Unique identifier for the list
+	Sources     []Source   `yaml:"sources,omitempty"` // List of additional sources (users/repos) to include (not in the list)
+	Title       string     `yaml:"title"`             // Title of the list
+	Tagline     string     `yaml:"tagline"`           // Short description or tagline
+	Output      string     `yaml:"output"`            // Output file path or name
+	MinStars    int        `yaml:"min_stars"`         // Minimum GitHub stars required for inclusion
+	StaleMonths int        `yaml:"stale_months"`      // Months since last update to consider stale
+	Badges      []string   `yaml:"badges"`            // List of badge names to display
+	Categories  []Category `yaml:"categories"`        // List categories; usually one auto category "Repositories"
 
 	GroupByTopic      bool              `yaml:"group_by_topic"`      // Group repositories by GitHub topic (default: false)
 	TopicFallback     string            `yaml:"topic_fallback"`      // Fallback topic name if none found (default: "misc")
