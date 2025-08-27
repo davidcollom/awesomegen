@@ -28,6 +28,16 @@ func NewScraper(log logr.Logger) *HTMLScraper {
 	}
 }
 
+var excludedLinks = []string{
+	"topics",
+	"marketplace",
+	"orgs",
+	"contact",
+	"solutions",
+	"sponsors",
+	"resources",
+}
+
 func (s *HTMLScraper) ListRepos(ctx context.Context, user, slug string) ([]string, error) {
 	var out []string
 	seen := map[string]struct{}{}
@@ -59,7 +69,8 @@ func (s *HTMLScraper) ListRepos(ctx context.Context, user, slug string) ([]strin
 			href, _ := a.Attr("href")
 			href = strings.Trim(href, "/")
 			parts := strings.Split(href, "/")
-			if len(parts) == 2 && parts[0] != "topics" && parts[0] != "marketplace" && parts[0] != "orgs" {
+			// If we have exactly 2 `/`'s and contains a path/part from `excludedLinks`
+			if len(parts) == 2 && !slices.Contains(excludedLinks, parts[0]) {
 				slug := parts[0] + "/" + parts[1]
 				if _, ok := seen[slug]; !ok {
 					seen[slug] = struct{}{}
@@ -68,12 +79,13 @@ func (s *HTMLScraper) ListRepos(ctx context.Context, user, slug string) ([]strin
 			}
 		})
 		added := len(out) - countBefore
-		s.log.V(1).Info("scraped page", "url", u, "repos_found", added)
+		s.log.Info("scraped page", "url", u, "repos_found", added)
 
 		if added == 0 || !hasNext(doc) {
 			break
 		}
 	}
+
 	slices.Sort(out)
 	return out, nil
 }
