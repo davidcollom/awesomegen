@@ -10,7 +10,7 @@ require (
 	github.com/invopop/jsonschema v0.13.0
 	github.com/jonboulle/clockwork v0.5.0
 	github.com/spf13/cobra v1.9.1
-	github.com/stretchr/testify v1.10.0
+	github.com/stretchr/testify v1.11.1
 	golang.org/x/oauth2 v0.30.0
 	golang.org/x/text v0.28.0
 	gopkg.in/yaml.v3 v3.0.1
