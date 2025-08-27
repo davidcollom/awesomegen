@@ -2,10 +2,12 @@ package github
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
-	"time"
+	"strings"
+
+	"github.com/google/go-github/v55/github"
+	"golang.org/x/oauth2"
 )
 
 type Client interface {
@@ -13,61 +15,45 @@ type Client interface {
 }
 
 type RESTClient struct {
-	http  *http.Client
-	token string
+	client *github.Client
 }
 
 func New(token string) *RESTClient {
+	var tc *http.Client
+	if token != "" {
+		ts := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: token})
+		tc = oauth2.NewClient(context.Background(), ts)
+	}
 	return &RESTClient{
-		http:  &http.Client{Timeout: 10 * time.Second},
-		token: token,
+		client: github.NewClient(tc),
 	}
 }
 
 func (c *RESTClient) GetRepo(ctx context.Context, ownerRepo string) (RepoMeta, error) {
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, "https://api.github.com/repos/"+ownerRepo, nil)
-	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("User-Agent", "awesomegen/1.0")
-	if c.token != "" {
-		req.Header.Set("Authorization", "Bearer "+c.token)
+	// Split ownerRepo into owner and repo
+	var owner, repo string
+	parts := strings.SplitN(ownerRepo, "/", 2)
+	if len(parts) != 2 {
+		return RepoMeta{}, fmt.Errorf("invalid owner/repo format")
 	}
-	resp, err := c.http.Do(req)
+	owner, repo = parts[0], parts[1]
+
+	gr, _, err := c.client.Repositories.Get(ctx, owner, repo)
 	if err != nil {
 		return RepoMeta{}, err
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return RepoMeta{}, fmt.Errorf("github: %s", resp.Status)
-	}
-	var d struct {
-		FullName    string `json:"full_name"`
-		HTMLURL     string `json:"html_url"`
-		Description string `json:"description"`
-		Stars       int    `json:"stargazers_count"`
-		Archived    bool   `json:"archived"`
-		PushedAt    string `json:"pushed_at"`
-		License     *struct {
-			SPDX string `json:"spdx_id"`
-		} `json:"license"`
-		Topics []string `json:"topics"`
-	}
-	dec := json.NewDecoder(resp.Body)
-	if err := dec.Decode(&d); err != nil {
-		return RepoMeta{}, err
-	}
-	t, _ := time.Parse(time.RFC3339, d.PushedAt)
 	lic := ""
-	if d.License != nil && d.License.SPDX != "NOASSERTION" {
-		lic = d.License.SPDX
+	if gr.License != nil && gr.License.GetSPDXID() != "NOASSERTION" {
+		lic = gr.License.GetSPDXID()
 	}
 	return RepoMeta{
-		FullName:    d.FullName,
-		URL:         d.HTMLURL,
-		Description: d.Description,
-		Stars:       d.Stars,
+		FullName:    gr.GetFullName(),
+		URL:         gr.GetHTMLURL(),
+		Description: gr.GetDescription(),
+		Stars:       gr.GetStargazersCount(),
 		License:     lic,
-		Topics:      d.Topics,
-		Archived:    d.Archived,
-		PushedAt:    t,
+		Topics:      gr.Topics,
+		Archived:    gr.GetArchived(),
+		PushedAt:    gr.GetPushedAt().Time,
 	}, nil
 }
