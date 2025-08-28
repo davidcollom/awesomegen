@@ -1,0 +1,80 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - "**.go"
+      - "go.mod"
+      - "go.sum"
+      - ".golangci.yml"
+  push:
+    branches: [ main ]
+    paths:
+      - "**.go"
+      - "go.mod"
+      - "go.sum"
+      - ".golangci.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint-test:
+    name: Lint & Test (Go 1.23)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: "go.mod"
+          cache: true
+
+      - name: Verify module graph
+        run: |
+          go mod download
+
+      - name: Build (quick sanity)
+        run: go build ./cmd/awesomegen/...
+
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: v1.60.1
+          args: >
+            --timeout=5m
+            --out-format=github-actions
+          only-new-issues: true
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: Unit tests (race + coverage)
+        run: |
+          go test ./... -race -covermode=atomic -coverprofile=coverage.out
+      - name: Upload coverage artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-${{ github.sha }}
+          path: coverage.out
+
+  govulncheck:
+    name: Go Vulnerability Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: "go.mod"
+          cache: true
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+      - name: Run govulncheck
+        run: govulncheck ./...

@@ -63,17 +63,17 @@ func writeByTopTags(b *strings.Builder, list config.List) {
 		prim := mapsSortedKeysNested(nested)
 		b.WriteString("## Table of Contents\n")
 		for _, pk := range prim {
-			fmt.Fprintf(b, "- [%s](#%s)\n", pk, slug(pk))
+			fmt.Fprintf(b, "- [%s](#%s)\n", displayTag(pk, list.Locale, list.TagDisplayOverrides), slug(pk))
 		}
 		b.WriteString("\n")
 
 		for _, pk := range prim {
-			fmt.Fprintf(b, "## %s\n\n", pk)
+			fmt.Fprintf(b, "## %s\n\n", displayTag(pk, list.Locale, list.TagDisplayOverrides))
 			sec := nested[pk]
 			sk := mapsSortedKeys(sec)
 			for _, s := range sk {
 				if s != list.TopicFallback || len(sec) > 1 {
-					fmt.Fprintf(b, "### %s\n\n", s)
+					fmt.Fprintf(b, "### %s\n\n", displayTag(s, list.Locale, list.TagDisplayOverrides))
 				}
 				writeRepoLines(b, sec[s], list)
 				b.WriteString("\n")
@@ -89,7 +89,8 @@ func writeByTopTags(b *strings.Builder, list config.List) {
 			continue
 		}
 		p, _ := primarySecondaryForRepo(it.GHMeta, ranked, list.TagAliases, list.TopicFallback)
-		groups[p] = append(groups[p], it)
+		dp := displayTag(p, list.Locale, list.TagDisplayOverrides)
+		groups[dp] = append(groups[dp], it)
 	}
 
 	keys := mapsSortedKeys(groups)
@@ -163,17 +164,17 @@ func writeNestedByTopic(b *strings.Builder, list config.List) {
 	b.WriteString("## Table of Contents\n")
 	primKeys := mapsSortedKeysNested(nested)
 	for _, pk := range primKeys {
-		fmt.Fprintf(b, "- [%s](#%s)\n", pk, slug(pk))
+		fmt.Fprintf(b, "- [%s](#%s)\n", smartTitleCase(pk, list.Locale), slug(pk))
 	}
 	b.WriteString("\n")
 
 	for _, pk := range primKeys {
-		fmt.Fprintf(b, "## %s\n\n", pk)
+		fmt.Fprintf(b, "## %s\n\n", smartTitleCase(pk, list.Locale))
 		sec := nested[pk]
 		secKeys := mapsSortedKeys(sec)
 		for _, sk := range secKeys {
 			// Skip if primary==secondary and it would look redundant? Keep simple for now.
-			fmt.Fprintf(b, "### %s\n\n", sk)
+			fmt.Fprintf(b, "### %s\n\n", smartTitleCase(sk, list.Locale))
 			writeRepoLines(b, sec[sk], list)
 			b.WriteString("\n")
 		}

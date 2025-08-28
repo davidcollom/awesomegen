@@ -30,6 +30,8 @@ type List struct {
 	MinTagCount    int               `yaml:"min_tag_count"`     // Minimum count for a tag to be considered a top tag
 	SingleHome     bool              `yaml:"single_home"`       // If true, generate a single home page
 	TagAliases     map[string]string `yaml:"tag_aliases"`       // Map of tag aliases for normalization
+
+	TagDisplayOverrides map[string]string `yaml:"tag_display_overrides"` // optional
 }
 
 type Source struct {

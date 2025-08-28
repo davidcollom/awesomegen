@@ -26,6 +26,7 @@ func rankTopTags(items []config.Item, aliases map[string]string, minCount, limit
 		if it.GHMeta == nil {
 			continue
 		}
+		// This causes a "No Repo's found if no Topics are used"
 		seen := map[string]struct{}{}
 		for _, raw := range it.GHMeta.Topics {
 			t := canonicalTag(raw, aliases)

@@ -2,11 +2,13 @@ package render
 
 import (
 	"fmt"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
 
 	"github.com/davidcollom/awesomegen/internal/config"
+	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
 	"golang.org/x/text/message"
 )
@@ -31,10 +33,6 @@ func humanStars(n int, format, locale string) string {
 		p := message.NewPrinter(tag)
 		return p.Sprintf("%d", n)
 	}
-}
-
-func slug(s string) string {
-	return strings.ToLower(strings.ReplaceAll(strings.TrimSpace(s), " ", "-"))
 }
 
 func sortItems(items []config.Item) {
@@ -69,4 +67,61 @@ func key(i config.Item) string {
 		return i.Title
 	}
 	return i.URL
+}
+
+var splitTokens = regexp.MustCompile(`([A-Za-z0-9]+|[^A-Za-z0-9]+)`)
+
+func smartTitleCase(s, locale string) string {
+	c := cases.Title(language.Make(locale))
+	tokens := splitTokens.FindAllString(s, -1)
+	for i, t := range tokens {
+		if isAlnum(t) {
+			tokens[i] = c.String(strings.ToLower(t)) // “json” -> “Json” (we fix JSON via overrides above)
+		}
+	}
+	return strings.Join(tokens, "")
+}
+
+func isAlnum(s string) bool {
+	for _, r := range s {
+		if (r >= '0' && r <= '9') || (r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z') {
+			continue
+		}
+		return false
+	}
+	return len(s) > 0
+}
+
+// Better slug for headings that tolerates '/', '_', '.'
+var nonSlug = regexp.MustCompile(`[^a-z0-9\-]+`)
+var dashes = regexp.MustCompile(`-+`)
+
+func slug(s string) string {
+	s = strings.ToLower(strings.TrimSpace(s))
+	s = strings.NewReplacer(" ", "-", "/", "-", "_", "-", ".", "-").Replace(s)
+	s = nonSlug.ReplaceAllString(s, "-")
+	s = dashes.ReplaceAllString(s, "-")
+	s = strings.Trim(s, "-")
+	return s
+}
+
+// Display a tag nicely for headings/TOC.
+// 1) explicit overrides (from config), 2) built-in overrides,
+// 3) smart title-case that respects separators and keeps digits.
+func displayTag(tag, locale string, overrides map[string]string) string {
+	if tag == "" {
+		return tag
+	}
+	raw := strings.ToLower(tag)
+
+	if overrides != nil {
+		if v, ok := overrides[raw]; ok && v != "" {
+			return v
+		}
+	}
+	if v, ok := defaultTagDisplays[raw]; ok {
+		return v
+	}
+	// fallback: smart Title Case
+	return smartTitleCase(tag, locale)
 }

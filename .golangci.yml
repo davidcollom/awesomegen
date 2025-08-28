@@ -1,0 +1,91 @@
+version: "2"
+
+linters:
+  # v2 uses `default` instead of disable-all/enable-all
+  # choose: standard | all | none | fast
+  default: standard
+  enable:
+    - govet
+    - staticcheck
+    - revive
+    - errcheck
+    - ineffassign
+    - gocritic
+    - unused
+    - misspell
+    - prealloc
+    - unparam
+    - cyclop
+  # Per-linter settings live under `linters.settings`
+  settings:
+    misspell:
+      locale: UK
+    cyclop:
+      max-complexity: 15
+      # package-average is optional; leave unset unless you want package score
+    revive:
+      # keep this lean; you can add rules.toml later if you want
+      rules:
+        - name: indent-error-flow
+        - name: error-naming
+        - name: receiver-naming
+        - name: package-comments
+          severity: error
+        - name: var-declaration
+  # Exclusions moved under `linters.exclusions` in v2
+  exclusions:
+    generated: lax
+    warn-unused: true
+    presets:
+      - comments
+      - std-error-handling
+      - common-false-positives
+    rules:
+      # exclude a few noisy linters in tests
+      - path: _test\.go
+        linters: [gocyclo, errcheck, dupl, gosec]
+      # allow long go:generate lines
+      - linters: [lll]
+        source: "^//go:generate "
+
+formatters:
+  # Optional: enforce formatting within lint (or run `golangci-lint fmt` separately)
+  enable:
+    - gofumpt
+    - goimports
+  settings:
+    gofumpt:
+      extra-rules: true
+  exclusions:
+    generated: strict
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+  # v2 “new issues only” flags:
+  new: true
+  new-from-merge-base: main
+  whole-files: true
+  # If you prefer rev pinning over merge-base, use:
+  # new-from-rev: origin/main
+
+output:
+  # v2 uses `formats` map if you want JSON/HTML/etc.
+  # Leaving defaults (colour text to stdout).
+  sort-order: [linter, severity, file]
+  show-stats: false
+
+run:
+  timeout: 5m
+  relative-path-mode: gomod
+  modules-download-mode: readonly
+  tests: true
+  go: "1.23"
+  concurrency: 4
+  # issues-exit-code: 1  # default
+
+severity:
+  default: error
+  rules:
+    - linters: [dupl]
+      severity: info

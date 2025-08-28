@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/go-logr/stdr"
+	"github.com/stretchr/testify/require"
 
 	"github.com/davidcollom/awesomegen/internal/scrape"
 )
@@ -15,7 +16,9 @@ import (
 func TestListRepos(t *testing.T) {
 	html, _ := os.ReadFile("../../testdata/stars_list_page.html")
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write(html)
+		num, err := w.Write(html)
+		require.NoError(t, err)
+		require.NotEmpty(t, num)
 	}))
 	defer srv.Close()
 

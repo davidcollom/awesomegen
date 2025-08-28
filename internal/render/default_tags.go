@@ -1,0 +1,37 @@
+package render
+
+// Known good-casing for common tech terms and acronyms.
+// Keys must be lowercase canonical forms.
+var defaultTagDisplays = map[string]string{
+	"ai":            "AI",
+	"argo":          "Argo",
+	"argocd":        "Argo CD",
+	"aws":           "AWS",
+	"azure":         "Azure",
+	"ci-cd":         "CI/CD",
+	"cicd":          "CI/CD",
+	"ebpf":          "eBPF",
+	"gcp":           "GCP",
+	"github":        "GitHub",
+	"gitlab":        "GitLab",
+	"gitops":        "GitOps",
+	"grpc":          "gRPC",
+	"helm":          "Helm",
+	"http":          "HTTP",
+	"https":         "HTTPS",
+	"istio":         "Istio",
+	"json":          "JSON",
+	"k8s":           "K8s",
+	"kubernetes":    "Kubernetes",
+	"linkerd":       "Linkerd",
+	"opentelemetry": "OpenTelemetry",
+	"operator":      "Operator",
+	"operators":     "Operators",
+	"yaml":          "YAML",
+	"argo-cd":       "Argo CD",
+	"javascript":    "JavaScript",
+	"markdown":      "Markdown",
+	"mongodb":       "MongoDB",
+	"nodejs":        "Node.js",
+	"typescript":    "TypeScript",
+}

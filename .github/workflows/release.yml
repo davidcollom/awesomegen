@@ -15,11 +15,22 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: "1.23"
-      - name: Build
-        run: go build ./cmd/awesomegen
-      - name: Build & Push Image
-        run: |
-          IMAGE="ghcr.io/${{ github.repository }}:$(echo $GITHUB_REF_NAME)"
-          echo "${{ github.token }}" | docker login ghcr.io -u $GITHUB_ACTOR --password-stdin
-          docker build -t "$IMAGE" .
-          docker push "$IMAGE"
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          version: "latest"
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/attest-build-provenance@v2.4.0
+        with:
+          subject-checksums: ./dist/checksums.txt
+
+      
