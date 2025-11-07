@@ -29,6 +29,10 @@ func TestGroupingNested(t *testing.T) {
 	// build with two-topic repos and assert both ##primary and ###secondary appear
 }
 func TestMarkdownVariants(t *testing.T) {
+	topicGroupingFlat := config.TopicGroupingModeFlat
+	topicGroupingNested := config.TopicGroupingModeNested
+	starsFormatCompact := config.StarsFormatCompact
+
 	tests := []struct {
 		name     string
 		list     config.List
@@ -41,7 +45,7 @@ func TestMarkdownVariants(t *testing.T) {
 				Tagline:           "A curated list of awesome repositories.",
 				Badges:            []string{"https://img.shields.io/badge/awesome-blue.svg"},
 				GroupByTopic:      false,
-				TopicGroupingMode: "flat",
+				TopicGroupingMode: &topicGroupingFlat,
 				TopicFallback:     "Misc",
 				Categories: []*config.Category{
 					{
@@ -68,7 +72,7 @@ func TestMarkdownVariants(t *testing.T) {
 						},
 					},
 				},
-				StarsFormat: config.StarsFormatCompact,
+				StarsFormat: &starsFormatCompact,
 				Locale:      "en-GB",
 			},
 			contains: []string{
@@ -86,7 +90,7 @@ func TestMarkdownVariants(t *testing.T) {
 			list: config.List{
 				Title:             "Awesome Topics",
 				GroupByTopic:      true,
-				TopicGroupingMode: "flat",
+				TopicGroupingMode: &topicGroupingFlat,
 				TopicFallback:     "Misc",
 				Categories: []*config.Category{
 					{
@@ -114,7 +118,7 @@ func TestMarkdownVariants(t *testing.T) {
 						},
 					},
 				},
-				StarsFormat: config.StarsFormatCompact,
+				StarsFormat: &starsFormatCompact,
 				Locale:      "en-GB",
 			},
 			contains: []string{
@@ -133,7 +137,7 @@ func TestMarkdownVariants(t *testing.T) {
 			list: config.List{
 				Title:             "Awesome Nested",
 				GroupByTopic:      true,
-				TopicGroupingMode: "nested",
+				TopicGroupingMode: &topicGroupingNested,
 				TopicFallback:     "Misc",
 				Categories: []*config.Category{
 					{
@@ -161,7 +165,7 @@ func TestMarkdownVariants(t *testing.T) {
 						},
 					},
 				},
-				StarsFormat: config.StarsFormatCompact,
+				StarsFormat: &starsFormatCompact,
 				Locale:      "en-GB",
 			},
 			contains: []string{

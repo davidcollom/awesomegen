@@ -5,6 +5,9 @@ package config
 import (
 	"github.com/davidcollom/awesomegen/internal/github"
 	"github.com/invopop/jsonschema"
+
+	// Used within generate_schema.go - but is ignored during normal builds
+	_ "github.com/stoewer/go-strcase"
 )
 
 type Config struct {
@@ -14,8 +17,10 @@ type Config struct {
 }
 
 type List struct {
-	Slug        string      `yaml:"slug" json:"slug" jsonschema:"required,description=List slug identifier"`                                          // Unique identifier for the list
-	Sources     []Source    `yaml:"sources,omitempty"`                                                                                                // List of additional sources (users/repos) to include (not in the list)
+	// Unique identifier for the list
+	Slug string `yaml:"slug" json:"slug" jsonschema:"required,description=List slug identifier"`
+	// List of additional sources (users/repos) to include (not in the list)
+	Sources     []*Source   `yaml:"sources,omitempty" jsonschema:"description=Array of additional sources to include"`
 	Title       string      `yaml:"title" json:"title" jsonschema:"required,description=List title"`                                                  // Title of the list
 	Tagline     string      `yaml:"tagline" json:"tagline" jsonschema:"required,description=List tagline"`                                            // Short description or tagline
 	Output      string      `yaml:"output,omitempty" json:"output,omitempty" jsonschema:"description=Output path or format"`                          // Output file path or name
@@ -24,17 +29,17 @@ type List struct {
 	Badges      []string    `yaml:"badges,omitempty" json:"badges,omitempty" jsonschema:"description=Array of badge names"`                           // List of badge names to display
 	Categories  []*Category `yaml:"categories,omitempty" json:"categories,omitempty" jsonschema:"description=Array of categories"`                    // List categories; usually one auto category "Repositories"
 
-	GroupByTopic      bool              `yaml:"group_by_topic"`      // Group repositories by GitHub topic (default: false)
-	TopicFallback     string            `yaml:"topic_fallback"`      // Fallback topic name if none found (default: "misc")
-	TopicGroupingMode TopicGroupingMode `yaml:"topic_grouping_mode"` // Topic grouping style: "flat" or "nested" (default: "flat")
-	StarsFormat       StarsFormat       `yaml:"stars_format"`        // Format for displaying stars: "locale", "compact", "none" (default: "locale")
-	Locale            string            `yaml:"locale"`              // Locale for formatting numbers, BCP-47 (default: "en-GB")
+	GroupByTopic      bool               `yaml:"group_by_topic" jsonschema:"default=false,description=Group repositories by GitHub topic (default: false)"`                         // Group repositories by GitHub topic (default: false)
+	TopicFallback     string             `yaml:"topic_fallback" jsonschema:"default=misc,description=Fallback topic name if none found (default: 'misc')"`                          // Fallback topic name if none found (default: "misc")
+	TopicGroupingMode *TopicGroupingMode `yaml:"topic_grouping_mode" jsonschema:"default=flat,description=Topic grouping style: 'flat' or 'nested' (default: 'flat')"`              // Topic grouping style: "flat" or "nested" (default: "flat")
+	StarsFormat       *StarsFormat       `yaml:"stars_format" jsonschema:"default=locale,description=Format for displaying stars: 'locale', 'compact', 'none' (default: 'locale')"` // Format for displaying stars: "locale", "compact", "none" (default: "locale")
+	Locale            string             `yaml:"locale" jsonschema:"description=Locale for formatting numbers, BCP-47 (default: 'en-GB')"`                                          // Locale for formatting numbers, BCP-47 (default: "en-GB")
 
-	GroupByTopTags bool              `yaml:"group_by_top_tags"` // Group repositories by top tags
-	TopTagsLimit   int               `yaml:"top_tags_limit"`    // Maximum number of top tags to group by
-	MinTagCount    int               `yaml:"min_tag_count"`     // Minimum count for a tag to be considered a top tag
-	SingleHome     bool              `yaml:"single_home"`       // If true, generate a single home page
-	TagAliases     map[string]string `yaml:"tag_aliases"`       // Map of tag aliases for normalization
+	GroupByTopTags bool              `yaml:"group_by_top_tags" jsonschema:"description=Group repositories by top tags"`                 // Group repositories by top tags
+	TopTagsLimit   int               `yaml:"top_tags_limit" jsonschema:"description=Maximum number of top tags to group by"`            // Maximum number of top tags to group by
+	MinTagCount    int               `yaml:"min_tag_count" jsonschema:"description=Minimum count for a tag to be considered a top tag"` // Minimum count for a tag to be considered a top tag
+	SingleHome     bool              `yaml:"single_home" jsonschema:"description=If true, generate a single home page"`                 // If true, generate a single home page
+	TagAliases     map[string]string `yaml:"tag_aliases" jsonschema:"optional,description=Map of tag aliases for normalization"`        // Map of tag aliases for normalization
 }
 
 type StarsFormat string
@@ -45,12 +50,28 @@ const (
 	StarsFormatNone    StarsFormat = "none"
 )
 
+// JSONSchema provides custom schema for StarsFormat
+func (StarsFormat) JSONSchema() *jsonschema.Schema {
+	return &jsonschema.Schema{
+		Type: "string",
+		Enum: []interface{}{StarsFormatLocale, StarsFormatCompact, StarsFormatNone},
+	}
+}
+
 type TopicGroupingMode string
 
 const (
 	TopicGroupingModeFlat   TopicGroupingMode = "flat"
 	TopicGroupingModeNested TopicGroupingMode = "nested"
 )
+
+// JSONSchema provides custom schema for TopicGroupingMode
+func (TopicGroupingMode) JSONSchema() *jsonschema.Schema {
+	return &jsonschema.Schema{
+		Type: "string",
+		Enum: []interface{}{TopicGroupingModeFlat, TopicGroupingModeNested},
+	}
+}
 
 type Source struct {
 	User string `yaml:"user"` // GitHub username or organization
@@ -62,7 +83,7 @@ type Category struct {
 	Items   []*Item `yaml:"items" json:"items" jsonschema:"description=Array of items in this category - Manually set if required"`
 	Version int     `yaml:"version" json:"version" jsonschema:"required,description=Configuration version"`
 	User    string  `yaml:"user" json:"user" jsonschema:"required,description=User identifier"`
-	Lists   []List  `yaml:"lists" json:"lists" jsonschema:"required,description=Array of lists"`
+	Lists   []*List `yaml:"lists" json:"lists" jsonschema:"required,description=Array of lists"`
 }
 
 type ItemType string
@@ -77,7 +98,7 @@ const (
 func (ItemType) JSONSchema() *jsonschema.Schema {
 	return &jsonschema.Schema{
 		Type: "string",
-		Enum: []interface{}{"github", "link"},
+		Enum: []interface{}{ItemGitHub, ItemLink},
 	}
 }
 

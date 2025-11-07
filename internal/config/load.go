@@ -28,16 +28,18 @@ func Load(path string) (Config, error) {
 			if c.User == "" || c.Lists[i].Slug == "" {
 				return Config{}, fmt.Errorf("either lists[%d].sources or {user + slug} must be set", i)
 			}
-			c.Lists[i].Sources = []Source{{User: c.User, Slug: c.Lists[i].Slug}}
+			c.Lists[i].Sources = []*Source{{User: c.User, Slug: c.Lists[i].Slug}}
 		}
 		if c.Lists[i].TopicFallback == "" {
 			c.Lists[i].TopicFallback = "misc"
 		}
-		if c.Lists[i].TopicGroupingMode == "" {
-			c.Lists[i].TopicGroupingMode = "flat"
+		if c.Lists[i].TopicGroupingMode == nil {
+			mode := TopicGroupingModeFlat
+			c.Lists[i].TopicGroupingMode = &mode
 		}
-		if c.Lists[i].StarsFormat == "" {
-			c.Lists[i].StarsFormat = StarsFormatLocale
+		if c.Lists[i].StarsFormat == nil {
+			mode := StarsFormatLocale
+			c.Lists[i].StarsFormat = &mode
 		}
 		if c.Lists[i].Locale == "" {
 			c.Lists[i].Locale = "en-GB"

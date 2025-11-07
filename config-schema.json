@@ -1,7 +1,6 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/davidcollom/awesomegen/internal/config/config",
-  "$ref": "#/$defs/Config",
+  "$schema": "https://json-schema.org/draft-07/schema",
+  "$id": "https://example.com/schemas/awesomegen/config-schema.json",
   "$defs": {
     "Category": {
       "properties": {
@@ -40,29 +39,6 @@
         "version",
         "user",
         "lists"
-      ]
-    },
-    "Config": {
-      "properties": {
-        "Version": {
-          "type": "integer"
-        },
-        "User": {
-          "type": "string"
-        },
-        "Lists": {
-          "items": {
-            "$ref": "#/$defs/List"
-          },
-          "type": "array"
-        }
-      },
-      "additionalProperties": false,
-      "type": "object",
-      "required": [
-        "Version",
-        "User",
-        "Lists"
       ]
     },
     "Item": {
@@ -107,11 +83,12 @@
           "type": "string",
           "description": "List slug identifier"
         },
-        "Sources": {
+        "sources": {
           "items": {
             "$ref": "#/$defs/Source"
           },
-          "type": "array"
+          "type": "array",
+          "description": "Array of additional sources to include"
         },
         "title": {
           "type": "string",
@@ -147,76 +124,125 @@
           "type": "array",
           "description": "Array of categories"
         },
-        "GroupByTopic": {
-          "type": "boolean"
+        "group_by_topic": {
+          "type": "boolean",
+          "description": "Group repositories by GitHub topic (default: false)",
+          "default": false
         },
-        "TopicFallback": {
-          "type": "string"
+        "topic_fallback": {
+          "type": "string",
+          "description": "Fallback topic name if none found (default: 'misc')",
+          "default": "misc"
         },
-        "TopicGroupingMode": {
-          "type": "string"
+        "topic_grouping_mode": {
+          "$ref": "#/$defs/TopicGroupingMode",
+          "description": "Topic grouping style: 'flat' or 'nested' (default: 'flat')"
         },
-        "StarsFormat": {
-          "type": "string"
+        "stars_format": {
+          "$ref": "#/$defs/StarsFormat",
+          "description": "Format for displaying stars: 'locale'"
         },
-        "Locale": {
-          "type": "string"
+        "locale": {
+          "type": "string",
+          "description": "Locale for formatting numbers"
         },
-        "GroupByTopTags": {
-          "type": "boolean"
+        "group_by_top_tags": {
+          "type": "boolean",
+          "description": "Group repositories by top tags"
         },
-        "TopTagsLimit": {
-          "type": "integer"
+        "top_tags_limit": {
+          "type": "integer",
+          "description": "Maximum number of top tags to group by"
         },
-        "MinTagCount": {
-          "type": "integer"
+        "min_tag_count": {
+          "type": "integer",
+          "description": "Minimum count for a tag to be considered a top tag"
         },
-        "SingleHome": {
-          "type": "boolean"
+        "single_home": {
+          "type": "boolean",
+          "description": "If true"
         },
-        "TagAliases": {
+        "tag_aliases": {
           "additionalProperties": {
             "type": "string"
           },
-          "type": "object"
+          "type": "object",
+          "description": "Map of tag aliases for normalization"
         }
       },
       "additionalProperties": false,
       "type": "object",
       "required": [
         "slug",
-        "Sources",
+        "sources",
         "title",
         "tagline",
-        "GroupByTopic",
-        "TopicFallback",
-        "TopicGroupingMode",
-        "StarsFormat",
-        "Locale",
-        "GroupByTopTags",
-        "TopTagsLimit",
-        "MinTagCount",
-        "SingleHome",
-        "TagAliases"
+        "group_by_topic",
+        "topic_fallback",
+        "topic_grouping_mode",
+        "stars_format",
+        "locale",
+        "group_by_top_tags",
+        "top_tags_limit",
+        "min_tag_count",
+        "single_home",
+        "tag_aliases"
       ]
     },
     "Source": {
       "properties": {
-        "User": {
+        "user": {
           "type": "string"
         },
-        "Slug": {
+        "slug": {
           "type": "string"
         }
       },
       "additionalProperties": false,
       "type": "object",
       "required": [
-        "User",
-        "Slug"
+        "user",
+        "slug"
+      ]
+    },
+    "StarsFormat": {
+      "type": "string",
+      "enum": [
+        "locale",
+        "compact",
+        "none"
+      ]
+    },
+    "TopicGroupingMode": {
+      "type": "string",
+      "enum": [
+        "flat",
+        "nested"
       ]
     }
   },
-  "title": "Config",
+  "$comment": "This schema is auto-generated from the Go struct definitions. Do not edit directly.",
+  "properties": {
+    "version": {
+      "type": "integer"
+    },
+    "user": {
+      "type": "string"
+    },
+    "lists": {
+      "items": {
+        "$ref": "#/$defs/List"
+      },
+      "type": "array"
+    }
+  },
+  "additionalProperties": false,
+  "type": "object",
+  "required": [
+    "version",
+    "user",
+    "lists"
+  ],
+  "title": "Config.YAML (Generated: 2025-11-07 16:06:22)",
   "description": "Configuration schema for awesomegen"
 }

@@ -8,8 +8,10 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/invopop/jsonschema"
+	"github.com/stoewer/go-strcase"
 
 	// Import the actual config package
 	"github.com/davidcollom/awesomegen/internal/config"
@@ -20,12 +22,21 @@ func main() {
 	reflector := jsonschema.Reflector{
 		AllowAdditionalProperties: false,
 		DoNotReference:            false,
+		ExpandedStruct:            true,
+		KeyNamer:                  strcase.SnakeCase,
 	}
+	// err := reflector.AddGoComments("github.com/davidcollom/awesomegen", ".")
+	// if err != nil {
+	// 	log.Fatalf("Failed to add Go comments: %v", err)
+	// }
 
 	// Generate schema for Config struct
 	schema := reflector.Reflect(&config.Config{})
-	schema.Title = "Config"
+	schema.Version = "https://json-schema.org/draft-07/schema"
+	schema.Title = fmt.Sprintf("Config.YAML (Generated: %s)", time.Now().Format("2006-01-02 15:04:05"))
 	schema.Description = "Configuration schema for awesomegen"
+	schema.Comments = "This schema is auto-generated from the Go struct definitions. Do not edit directly."
+	schema.ID = "https://example.com/schemas/awesomegen/config-schema.json"
 
 	// Get the output file path (relative to the package directory)
 	outputPath := "../../config-schema.json"
