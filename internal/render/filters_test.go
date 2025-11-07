@@ -26,7 +26,7 @@ func TestEnrichAndFilter(t *testing.T) {
 		"x/y": {FullName: "x/y", Stars: 10, PushedAt: time.Date(2020, 7, 1, 0, 0, 0, 0, time.UTC)},
 	}}
 	l := config.List{Title: "T", MinStars: 50, StaleMonths: 24,
-		Categories: []config.Category{{Name: "Repositories", Items: []config.Item{
+		Categories: []*config.Category{{Name: "Repositories", Items: []*config.Item{
 			{Type: config.ItemGitHub, Repo: "a/b"},
 			{Type: config.ItemGitHub, Repo: "x/y"},
 		}}}}

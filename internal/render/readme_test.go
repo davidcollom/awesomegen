@@ -43,9 +43,9 @@ func TestMarkdownVariants(t *testing.T) {
 				GroupByTopic:      false,
 				TopicGroupingMode: "flat",
 				TopicFallback:     "Misc",
-				Categories: []config.Category{
+				Categories: []*config.Category{
 					{
-						Items: []config.Item{
+						Items: []*config.Item{
 							{
 								GHMeta: &github.RepoMeta{
 									FullName:    "repo/one",
@@ -88,9 +88,9 @@ func TestMarkdownVariants(t *testing.T) {
 				GroupByTopic:      true,
 				TopicGroupingMode: "flat",
 				TopicFallback:     "Misc",
-				Categories: []config.Category{
+				Categories: []*config.Category{
 					{
-						Items: []config.Item{
+						Items: []*config.Item{
 							{
 								GHMeta: &github.RepoMeta{
 									FullName:    "repo/alpha",
@@ -135,9 +135,9 @@ func TestMarkdownVariants(t *testing.T) {
 				GroupByTopic:      true,
 				TopicGroupingMode: "nested",
 				TopicFallback:     "Misc",
-				Categories: []config.Category{
+				Categories: []*config.Category{
 					{
-						Items: []config.Item{
+						Items: []*config.Item{
 							{
 								GHMeta: &github.RepoMeta{
 									FullName:    "repo/one",
@@ -180,7 +180,7 @@ func TestMarkdownVariants(t *testing.T) {
 			list: config.List{
 				Title:        "Empty List",
 				GroupByTopic: false,
-				Categories:   []config.Category{},
+				Categories:   []*config.Category{},
 			},
 			contains: []string{
 				"# Empty List",

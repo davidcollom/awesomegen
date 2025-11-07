@@ -1,0 +1,222 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/davidcollom/awesomegen/internal/config/config",
+  "$ref": "#/$defs/Config",
+  "$defs": {
+    "Category": {
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Category name"
+        },
+        "items": {
+          "items": {
+            "$ref": "#/$defs/Item"
+          },
+          "type": "array",
+          "description": "Array of items in this category - Manually set if required"
+        },
+        "version": {
+          "type": "integer",
+          "description": "Configuration version"
+        },
+        "user": {
+          "type": "string",
+          "description": "User identifier"
+        },
+        "lists": {
+          "items": {
+            "$ref": "#/$defs/List"
+          },
+          "type": "array",
+          "description": "Array of lists"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "name",
+        "items",
+        "version",
+        "user",
+        "lists"
+      ]
+    },
+    "Config": {
+      "properties": {
+        "Version": {
+          "type": "integer"
+        },
+        "User": {
+          "type": "string"
+        },
+        "Lists": {
+          "items": {
+            "$ref": "#/$defs/List"
+          },
+          "type": "array"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "Version",
+        "User",
+        "Lists"
+      ]
+    },
+    "Item": {
+      "properties": {
+        "type": {
+          "$ref": "#/$defs/ItemType",
+          "description": "Item type - either github repository or link"
+        },
+        "repo": {
+          "type": "string",
+          "description": "Repository in owner/repo format (for github items)"
+        },
+        "url": {
+          "type": "string",
+          "description": "URL (for link items)"
+        },
+        "title": {
+          "type": "string",
+          "description": "Item title"
+        },
+        "notes": {
+          "type": "string",
+          "description": "Additional notes"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "type"
+      ]
+    },
+    "ItemType": {
+      "type": "string",
+      "enum": [
+        "github",
+        "link"
+      ]
+    },
+    "List": {
+      "properties": {
+        "slug": {
+          "type": "string",
+          "description": "List slug identifier"
+        },
+        "Sources": {
+          "items": {
+            "$ref": "#/$defs/Source"
+          },
+          "type": "array"
+        },
+        "title": {
+          "type": "string",
+          "description": "List title"
+        },
+        "tagline": {
+          "type": "string",
+          "description": "List tagline"
+        },
+        "output": {
+          "type": "string",
+          "description": "Output path or format"
+        },
+        "min_stars": {
+          "type": "integer",
+          "description": "Minimum stars required to be included"
+        },
+        "stale_months": {
+          "type": "integer",
+          "description": "Number of months to consider stale"
+        },
+        "badges": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "description": "Array of badge names"
+        },
+        "categories": {
+          "items": {
+            "$ref": "#/$defs/Category"
+          },
+          "type": "array",
+          "description": "Array of categories"
+        },
+        "GroupByTopic": {
+          "type": "boolean"
+        },
+        "TopicFallback": {
+          "type": "string"
+        },
+        "TopicGroupingMode": {
+          "type": "string"
+        },
+        "StarsFormat": {
+          "type": "string"
+        },
+        "Locale": {
+          "type": "string"
+        },
+        "GroupByTopTags": {
+          "type": "boolean"
+        },
+        "TopTagsLimit": {
+          "type": "integer"
+        },
+        "MinTagCount": {
+          "type": "integer"
+        },
+        "SingleHome": {
+          "type": "boolean"
+        },
+        "TagAliases": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "slug",
+        "Sources",
+        "title",
+        "tagline",
+        "GroupByTopic",
+        "TopicFallback",
+        "TopicGroupingMode",
+        "StarsFormat",
+        "Locale",
+        "GroupByTopTags",
+        "TopTagsLimit",
+        "MinTagCount",
+        "SingleHome",
+        "TagAliases"
+      ]
+    },
+    "Source": {
+      "properties": {
+        "User": {
+          "type": "string"
+        },
+        "Slug": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "User",
+        "Slug"
+      ]
+    }
+  },
+  "title": "Config",
+  "description": "Configuration schema for awesomegen"
+}

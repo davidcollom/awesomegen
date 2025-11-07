@@ -43,7 +43,7 @@ func Markdown(list config.List) string {
 }
 
 func writeByTopTags(b *strings.Builder, list config.List) {
-	var items []config.Item
+	var items []*config.Item
 	for _, c := range list.Categories {
 		items = append(items, c.Items...)
 	}
@@ -55,14 +55,14 @@ func writeByTopTags(b *strings.Builder, list config.List) {
 	}
 
 	if list.TopicGroupingMode == config.TopicGroupingModeNested {
-		nested := map[string]map[string][]config.Item{}
+		nested := map[string]map[string][]*config.Item{}
 		for _, it := range items {
 			if it.GHMeta == nil {
 				continue
 			}
 			p, s := primarySecondaryForRepo(it.GHMeta, ranked, list.TagAliases, list.TopicFallback)
 			if _, ok := nested[p]; !ok {
-				nested[p] = map[string][]config.Item{}
+				nested[p] = map[string][]*config.Item{}
 			}
 			nested[p][s] = append(nested[p][s], it)
 		}
@@ -91,7 +91,7 @@ func writeByTopTags(b *strings.Builder, list config.List) {
 	}
 
 	// flat mode
-	groups := map[string][]config.Item{}
+	groups := map[string][]*config.Item{}
 	for _, it := range items {
 		if it.GHMeta == nil {
 			continue
@@ -115,7 +115,7 @@ func writeByTopTags(b *strings.Builder, list config.List) {
 }
 
 func writeFlatByTopic(b *strings.Builder, list config.List) {
-	groups := map[string][]config.Item{}
+	groups := map[string][]*config.Item{}
 	for _, c := range list.Categories {
 		for _, it := range c.Items {
 			if it.GHMeta == nil {
@@ -144,7 +144,7 @@ func writeFlatByTopic(b *strings.Builder, list config.List) {
 }
 
 func writeNestedByTopic(b *strings.Builder, list config.List) {
-	nested := map[string]map[string][]config.Item{}
+	nested := map[string]map[string][]*config.Item{}
 	for _, c := range list.Categories {
 		for _, it := range c.Items {
 			if it.GHMeta == nil {
@@ -161,7 +161,7 @@ func writeNestedByTopic(b *strings.Builder, list config.List) {
 			}
 
 			if _, ok := nested[primary]; !ok {
-				nested[primary] = map[string][]config.Item{}
+				nested[primary] = map[string][]*config.Item{}
 			}
 			nested[primary][secondary] = append(nested[primary][secondary], it)
 		}
@@ -197,9 +197,9 @@ func writeFlatUnGrouped(b *strings.Builder, list config.List) {
 	b.WriteString("\n")
 }
 
-func writeRepoLines(b *strings.Builder, items []config.Item, list config.List) {
+func writeRepoLines(b *strings.Builder, items []*config.Item, list config.List) {
 	// keep sort stable & readable
-	slices.SortFunc(items, func(a, b config.Item) int {
+	slices.SortFunc(items, func(a, b *config.Item) int {
 		var ak, bk string
 		if a.GHMeta != nil {
 			ak = a.GHMeta.FullName
@@ -250,7 +250,7 @@ func mapsSortedKeys[T any](m map[string]T) []string {
 	return keys
 }
 
-func mapsSortedKeysNested(m map[string]map[string][]config.Item) []string {
+func mapsSortedKeysNested(m map[string]map[string][]*config.Item) []string {
 	keys := slices.Collect(maps.Keys(m))
 	slices.Sort(keys)
 	return keys

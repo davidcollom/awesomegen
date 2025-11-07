@@ -20,7 +20,7 @@ func canonicalTag(raw string, aliases map[string]string) string {
 	return t
 }
 
-func rankTopTags(items []config.Item, aliases map[string]string, minCount, limit int) []string {
+func rankTopTags(items []*config.Item, aliases map[string]string, minCount, limit int) []string {
 	counts := map[string]int{}
 	for _, it := range items {
 		if it.GHMeta == nil {

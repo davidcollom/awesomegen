@@ -21,7 +21,7 @@ func (e Enricher) EnrichAndFilter(ctx context.Context, list config.List) (config
 	out := list
 	for ci := range out.Categories {
 		e.Log.Info("enriching category", "name", out.Categories[ci].Name, "items", len(out.Categories[ci].Items))
-		var items []config.Item
+		var items []*config.Item
 		for _, it := range out.Categories[ci].Items {
 			if it.Type == config.ItemGitHub {
 				meta, err := e.GH.GetRepo(ctx, it.Repo)

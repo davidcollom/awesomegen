@@ -37,8 +37,8 @@ func slug(s string) string {
 	return strings.ToLower(strings.ReplaceAll(strings.TrimSpace(s), " ", "-"))
 }
 
-func sortItems(items []config.Item) {
-	slices.SortFunc(items, func(a, b config.Item) int {
+func sortItems(items []*config.Item) {
+	slices.SortFunc(items, func(a, b *config.Item) int {
 		typeRank := func(t config.ItemType) int {
 			if t == config.ItemGitHub {
 				return 0
@@ -48,8 +48,8 @@ func sortItems(items []config.Item) {
 		if r := typeRank(a.Type) - typeRank(b.Type); r != 0 {
 			return r
 		}
-		ak := key(a)
-		bk := key(b)
+		ak := key(*a)
+		bk := key(*b)
 		switch {
 		case ak < bk:
 			return -1
