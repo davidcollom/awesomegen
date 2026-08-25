@@ -14,6 +14,10 @@ updates:
     labels:
       - "dependencies"
     open-pull-requests-limit: 10
+    groups:
+      go-dependencies:
+        patterns:
+          - "*"
 
   # Keep GitHub Actions up to date
   - package-ecosystem: "github-actions"
@@ -28,6 +32,10 @@ updates:
     labels:
       - "dependencies"
     open-pull-requests-limit: 10
+    groups:
+      github-actions-dependencies:
+        patterns:
+          - "*"
 
   # Keep Docker base images fresh
   - package-ecosystem: "docker"
@@ -42,3 +50,7 @@ updates:
     labels:
       - "dependencies"
     open-pull-requests-limit: 10
+    groups:
+      docker-dependencies:
+        patterns:
+          - "*"
