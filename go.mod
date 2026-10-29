@@ -9,12 +9,12 @@ require (
 	github.com/google/go-github/v55 v55.0.0
 	github.com/invopop/jsonschema v0.14.0
 	github.com/jonboulle/clockwork v0.5.0
-	github.com/nao1215/markdown v1.1.0
+	github.com/nao1215/markdown v1.1.1
 	github.com/spf13/cobra v1.10.2
 	github.com/stoewer/go-strcase v1.3.1
 	github.com/stretchr/testify v1.12.1
 	golang.org/x/oauth2 v0.37.0
-	golang.org/x/text v0.42.0
+	golang.org/x/text v0.43.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
