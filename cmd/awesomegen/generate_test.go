@@ -23,13 +23,17 @@ import (
 // fakeScraper returns a fixed list of repositories, whatever it is asked
 // for.
 type fakeScraper struct {
-	repos []string
-	err   error
+	repos       []string
+	reposBySlug map[string][]string
+	err         error
 }
 
-func (s fakeScraper) ListRepos(_ context.Context, _, _ string) ([]string, error) {
+func (s fakeScraper) ListRepos(_ context.Context, _, slug string) ([]string, error) {
 	if s.err != nil {
 		return nil, s.err
+	}
+	if repos, ok := s.reposBySlug[slug]; ok {
+		return repos, nil
 	}
 	return s.repos, nil
 }
@@ -151,6 +155,42 @@ func TestGenerateWritesTheDocument(t *testing.T) {
 	require.NoError(t, err)
 	require.Contains(t, string(data), "# Tools")
 	require.Contains(t, string(data), "cli/cli")
+}
+
+func TestGenerateDoesNotWriteAnyListWhenALaterListCannotBeRendered(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := writeConfigIn(t, dir, `lists:
+  - slug: tools
+    title: "Tools"
+    sources:
+      - user: davidcollom
+        slug: tools
+  - slug: empty
+    title: "Empty"
+    sources:
+      - user: davidcollom
+        slug: empty
+`)
+
+	for _, name := range []string{"tools.md", "empty.md"} {
+		err := os.WriteFile(filepath.Join(dir, name), []byte("original\n"), 0o600)
+		require.NoError(t, err)
+	}
+
+	gen := testGenerator(t)
+	gen.Scraper = fakeScraper{
+		repos:       []string{"cli/cli"},
+		reposBySlug: map[string][]string{"empty": nil},
+	}
+
+	_, err := runGenerateWithArgs(t, &options{configPath: cfgPath}, gen)
+	require.ErrorContains(t, err, `list "empty" produced no entries`)
+
+	for _, name := range []string{"tools.md", "empty.md"} {
+		data, readErr := os.ReadFile(filepath.Join(dir, name))
+		require.NoError(t, readErr)
+		require.Equal(t, "original\n", string(data), "%s must remain unchanged", name)
+	}
 }
 
 // TestGenerateRefusesToOverwriteWithAnUnknownList makes sure that a lookup
