@@ -228,6 +228,12 @@ func writeFileAtomic(root, path string, data []byte) error {
 	if _, err := tmp.Write(data); err != nil {
 		return fmt.Errorf("write %s: %w", tmpName, err)
 	}
+	// The data has to be on the disk before the file is renamed into place:
+	// a crash right after the rename would otherwise leave a file that is
+	// there but empty.
+	if err := tmp.Sync(); err != nil {
+		return fmt.Errorf("sync %s: %w", tmpName, err)
+	}
 	if err := tmp.Close(); err != nil {
 		return fmt.Errorf("close %s: %w", tmpName, err)
 	}
@@ -237,7 +243,23 @@ func writeFileAtomic(root, path string, data []byte) error {
 	if err := os.Rename(tmpName, path); err != nil {
 		return fmt.Errorf("rename %s to %s: %w", tmpName, path, err)
 	}
+	// The name of the file has to be on the disk as well. Not every
+	// platform can do that, so a failure is not fatal.
+	syncDir(dir)
 	return nil
+}
+
+// syncDir flushes the directory entry of a renamed file to the disk.
+//
+// Not every platform supports it - Windows refuses to open a directory - so
+// a failure is ignored.
+func syncDir(dir string) {
+	d, err := os.Open(dir)
+	if err != nil {
+		return
+	}
+	defer func() { _ = d.Close() }()
+	_ = d.Sync()
 }
 
 // rejectSymlinks verifies that none of the path components below root is a
