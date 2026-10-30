@@ -36,13 +36,12 @@ func New(token string) *RESTClient {
 	tc := &http.Client{
 		Timeout:   RequestTimeout,
 		Transport: http.DefaultTransport,
-		// Never forward the Authorization header to a different host.
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			if len(via) > 0 && !strings.EqualFold(req.URL.Host, via[0].URL.Host) {
-				return fmt.Errorf("refusing to follow redirect to a different host: %s", req.URL.Host)
-			}
-			return nil
-		},
+		// Never forward the Authorization header to a different host or
+		// to a different scheme. The header is added by the transport
+		// below to every request of the chain, so a redirect to another
+		// host would hand the token over, and a redirect to plain HTTP
+		// would send it over the network in clear text.
+		CheckRedirect: CheckRedirect,
 	}
 	c := github.NewClient(tc)
 	if token != "" {
@@ -51,6 +50,25 @@ func New(token string) *RESTClient {
 		c = c.WithAuthToken(token)
 	}
 	return &RESTClient{client: c}
+}
+
+// CheckRedirect refuses a redirect that would leak the token.
+//
+// The token is added to every request of a redirect chain, so a redirect to
+// another host would hand it over and a redirect to plain HTTP would send
+// it over the network in clear text. A redirect to the same host over the
+// same scheme is followed.
+func CheckRedirect(req *http.Request, via []*http.Request) error {
+	if len(via) == 0 {
+		return nil
+	}
+	if !strings.EqualFold(req.URL.Host, via[0].URL.Host) {
+		return fmt.Errorf("refusing to follow redirect to a different host: %s", req.URL.Host)
+	}
+	if !strings.EqualFold(req.URL.Scheme, via[0].URL.Scheme) {
+		return fmt.Errorf("refusing to follow redirect to a different scheme: %s", req.URL.Scheme)
+	}
+	return nil
 }
 
 // SplitOwnerRepo validates an "owner/repo" identifier and returns its parts.
