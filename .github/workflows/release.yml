@@ -39,7 +39,15 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  GO_VERSION: '1.26.x'
+  # The Go version that builds the release. It is pinned to an exact patch,
+  # so that the same commit always produces the same artefacts.
+  #
+  # The CI tests the oldest Go version the module supports and the newest
+  # patch of the current line (see .github/workflows/ci.yml). Bump this
+  # value when a new stable Go is released: the patch versions carry the
+  # fixes of the compiler and of the standard library, and a release should
+  # be built with a toolchain that has them.
+  GO_VERSION: '1.27.3'
   # The version of GoReleaser is pinned, so that a release is built with the
   # same tool every time. Keep it in sync with GORELEASER_VERSION in the
   # Makefile, which installs the same version for a local release.
@@ -70,6 +78,12 @@ jobs:
       contents: write
       # Push the container image to GHCR.
       packages: write
+    env:
+      # The owner of the container registry. The image is published to the
+      # registry of the repository the workflow runs in, so that a fork
+      # publishes to its own registry instead of the one of the upstream
+      # repository.
+      GH_OWNER: ${{ github.repository_owner }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -81,8 +95,10 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
+          # The version is pinned to an exact patch (see the GO_VERSION
+          # variable above), so no lookup of the newest release happens
+          # here.
           go-version: ${{ env.GO_VERSION }}
-          check-latest: true
 
       - name: Install syft
         # GoReleaser shells out to syft to produce the SBOMs. The download is
@@ -108,7 +124,11 @@ jobs:
           chmod +x "${bindir}/syft"
           # The directory is added to the PATH of the steps that follow.
           echo "${bindir}" >> "${GITHUB_PATH}"
-          syft version
+          # The PATH of this step does not contain the directory yet: the
+          # line above only takes effect in the steps that follow. The
+          # version is printed with the full path, so that the step proves
+          # that the binary is the one that was just checked.
+          "${bindir}/syft" version
 
       - name: Set up Docker Buildx
         # `dockers_v2` builds the image with buildx.
@@ -135,12 +155,22 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-          # A draft release has no tag yet, so the API does not find it by
-          # its tag and the command fails. There is nothing to restore then:
-          # the release is a draft already, or it does not exist yet.
-          if ! draft="$(gh release view "${TAG}" --repo "${GITHUB_REPOSITORY}" --json isDraft --jq '.isDraft' 2>/dev/null)"; then
-            echo "The release ${TAG} is not published: there is nothing to restore"
-            exit 0
+          # A release that does not exist yet is reported as an error by
+          # gh, and that is the normal case for a tag that has never been
+          # released: there is nothing to restore then, the release is a
+          # draft already, or it does not exist yet.
+          #
+          # A draft release is found: gh looks it up through the GraphQL
+          # API, which knows the tag of a draft. Any other failure - a
+          # broken API call, a missing permission - has to stop the job
+          # instead of being taken for a release that does not exist.
+          if ! draft="$(gh release view "${TAG}" --repo "${GITHUB_REPOSITORY}" --json isDraft --jq '.isDraft' 2>&1)"; then
+            if printf '%s' "${draft}" | grep -q "release not found"; then
+              echo "The release ${TAG} does not exist yet: there is nothing to restore"
+              exit 0
+            fi
+            echo "::error::The release ${TAG} could not be read: ${draft}"
+            exit 1
           fi
           if [ "${draft}" = "true" ]; then
             echo "The release ${TAG} is a draft already"
@@ -175,6 +205,10 @@ jobs:
             dist/checksums.txt
           if-no-files-found: error
           retention-days: 7
+          # A repeated run of the workflow replaces the artefacts of the
+          # previous run instead of failing with "an artifact with this
+          # name already exists".
+          overwrite: true
 
   sbom:
     name: sbom
@@ -186,31 +220,57 @@ jobs:
     permissions:
       # Attach the SBOM to the release that GoReleaser created.
       contents: write
-      # The action downloads the workflow artefact through the REST API of
-      # the Actions before it attaches it to the release, and that download
-      # needs this permission.
-      actions: read
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      - name: Generate the SBOM and attach it to the release
+      - name: Generate the aggregate SBOM
         # GoReleaser already attaches a per-archive SBOM to the release.
         # This step adds one aggregate SBOM for the whole source tree.
+        #
+        # The action neither uploads the SBOM nor attaches it to the
+        # release: both are done by the steps below, which can replace the
+        # artefacts of a previous run of this workflow. The action cannot
+        # do that, and it would fail with "an artifact with this name
+        # already exists" when the job is re-run.
         uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
         with:
           path: .
           format: spdx-json
           artifact-name: sbom.spdx.json
           output-file: ./sbom.spdx.json
-          upload-artifact: true
-          upload-artifact-retention: 7
-          upload-release-assets: true
+          upload-artifact: false
+          upload-release-assets: false
           dependency-snapshot: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload the aggregate SBOM for signing
+        # The signing job downloads the SBOM from this artefact.
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: sbom.spdx.json
+          path: sbom.spdx.json
+          if-no-files-found: error
+          retention-days: 7
+          # A repeated run of the workflow replaces the artefact of the
+          # previous run instead of failing with "an artifact with this
+          # name already exists".
+          overwrite: true
+
+      - name: Attach the aggregate SBOM to the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          # The release is a draft at this point, and gh finds a draft
+          # through the GraphQL API. "--clobber" replaces the asset of a
+          # previous run of this workflow.
+          gh release upload "${TAG}" sbom.spdx.json --clobber --repo "${GITHUB_REPOSITORY}"
+          echo "Attached sbom.spdx.json to ${TAG}"
 
   sign:
     name: sign and attest
@@ -321,6 +381,13 @@ jobs:
     # the API does not return drafts, so a release that is published too
     # early could be installed before its signature exists - or without one
     # at all, when the signing job fails.
+    #
+    # The container tags are moved after the release is published, so that
+    # the image of a release is never reachable while the release itself is
+    # still a draft. The price is a short window in which the release
+    # exists but the version tag of the image does not: a run of this job
+    # that fails between the two steps is repaired by running it again,
+    # because both steps can be repeated.
     needs: [goreleaser, sbom, sign]
     runs-on: ubuntu-latest
     # A job that hangs holds a runner for hours. The promotion does not need
@@ -402,7 +469,8 @@ jobs:
               promoted="${TAG}, ${major}, ${minor} and latest"
               ;;
           esac
-          # The manifest of the staging tag is copied as it is, so the
-          # attestation of the image travels with it.
+          # The manifest of the staging tag is copied as it is, so that the
+          # SBOM attestation and the SBOM that GoReleaser attached to the
+          # image travel with the promoted tags.
           docker buildx imagetools create "${tags[@]}" "${staging}"
           echo "Promoted ${staging} to ${promoted}"
