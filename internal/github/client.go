@@ -2,6 +2,7 @@ package github
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"regexp"
@@ -116,4 +117,26 @@ func (c *RESTClient) GetRepo(ctx context.Context, ownerRepo string) (RepoMeta, e
 		Archived:    gr.GetArchived(),
 		PushedAt:    gr.GetPushedAt().Time,
 	}, nil
+}
+
+// IsNotFound reports whether an error says that the repository does not
+// exist.
+//
+// The API reports a repository that was deleted, that was renamed, that
+// became private or whose owner was suspended as "not found". Such an entry
+// cannot be enriched, and dropping it keeps the curation of the list intact:
+// the list simply does not name the repository any more.
+//
+// Every other failure - an expired token, a rate limit, a server error or a
+// network problem - says nothing about the repository. The list is then
+// unknown rather than curated, and it must not be written.
+func IsNotFound(err error) bool {
+	if err == nil {
+		return false
+	}
+	var resp *github.ErrorResponse
+	if !errors.As(err, &resp) || resp.Response == nil {
+		return false
+	}
+	return resp.Response.StatusCode == http.StatusNotFound
 }

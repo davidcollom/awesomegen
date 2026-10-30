@@ -18,8 +18,14 @@ type Enricher struct {
 	Log logr.Logger
 }
 
-// LookupError reports that one or more repository lookups failed. Callers can
-// use errors.As to detect it and decide whether to continue.
+// LookupError reports that one or more repository lookups failed because the
+// repository does not exist. Callers can use errors.As to detect it and
+// decide whether to continue.
+//
+// The repositories that are reported here were deleted, renamed or made
+// private. The curation of the list is the source of truth, so dropping them
+// keeps the list intact. Every other failure is reported as an
+// *UnavailableError instead, because it leaves the list unknown.
 type LookupError struct {
 	Failed int
 	Total  int
@@ -31,6 +37,31 @@ func (e *LookupError) Error() string {
 }
 
 func (e *LookupError) Unwrap() error { return e.Err }
+
+// UnavailableError reports a repository lookup that failed for a reason which
+// leaves the list unknown rather than curated.
+//
+// A repository that does not exist any more is dropped from the list and
+// reported as a *LookupError: the curation is the source of truth, and it
+// does not name the repository any more. Every other failure - an expired
+// token, a rate limit, a server error, a network problem - says nothing
+// about the repositories of the list. The list is then unknown, and it must
+// not be rendered: writing it would replace a curated README with a list
+// that is missing entries without a word.
+//
+// The error is deliberately not a *LookupError, so that the callers stop the
+// run instead of continuing with what is left.
+type UnavailableError struct {
+	Repo string
+	Err  error
+}
+
+func (e *UnavailableError) Error() string {
+	return fmt.Sprintf("the repository %s could not be loaded (%v); the list is unknown rather than curated and is not rendered",
+		e.Repo, e.Err)
+}
+
+func (e *UnavailableError) Unwrap() error { return e.Err }
 
 // AllFailed reports whether every repository lookup of the list failed.
 //
@@ -47,9 +78,13 @@ func (e *LookupError) AllFailed() bool {
 // EnrichAndFilter enriches every GitHub item in the list with repository
 // metadata and drops the items that fail the configured filters.
 //
-// Items that cannot be enriched are skipped, and the number of failures is
-// reported as a *LookupError so callers can decide whether a partially
-// enriched list is acceptable.
+// A repository that does not exist any more is skipped, and the number of
+// such repositories is reported as a *LookupError, so that the callers can
+// decide whether a partially enriched list is acceptable.
+//
+// A lookup that fails for any other reason stops the enrichment with an
+// *UnavailableError: the list is then unknown rather than curated, and it
+// must not be rendered.
 //
 // The supplied list is not modified: the enriched copy is returned.
 func (e Enricher) EnrichAndFilter(ctx context.Context, list config.List) (config.List, error) {
@@ -98,6 +133,20 @@ func (e Enricher) EnrichAndFilter(ctx context.Context, list config.List) (config
 						return out, ctxErr
 					}
 					e.Log.Error(res.err, "github lookup failed", "repo", it.Repo)
+					if !github.IsNotFound(res.err) {
+						// The repository may well be there: the lookup
+						// is what failed, because the token expired,
+						// the API is rate limiting or down, or the
+						// connection broke. Nothing says which
+						// repositories of the list are missing, so
+						// the list is unknown rather than curated
+						// and the run stops here.
+						return out, &UnavailableError{Repo: it.Repo, Err: res.err}
+					}
+					// The repository is gone. The entry is dropped and
+					// the failure is reported, so that a deleted
+					// repository does not empty a curated list
+					// without a word.
 					failures++
 					lastErr = res.err
 					continue

@@ -3,9 +3,11 @@ package render_test
 import (
 	"context"
 	"errors"
+	"net/http"
 	"testing"
 	"time"
 
+	ghapi "github.com/google/go-github/v55/github"
 	"github.com/jonboulle/clockwork"
 	"github.com/stretchr/testify/require"
 
@@ -217,4 +219,77 @@ func TestEnrichAndFilterLoadsEveryRepositoryOnce(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, out.Categories, 2)
 	require.Equal(t, 1, gh.calls["a/b"], "the repository is loaded once")
+}
+
+// failingGH fails every lookup with the given error.
+type failingGH struct{ err error }
+
+func (f failingGH) GetRepo(_ context.Context, _ string) (github.RepoMeta, error) {
+	return github.RepoMeta{}, f.err
+}
+
+// TestEnrichAndFilterStopsOnALookupThatIsNotAMissingRepository makes sure
+// that a lookup which fails for a reason that has nothing to do with the
+// repository stops the enrichment.
+//
+// A repository that does not exist any more is dropped from the list: the
+// curation is the source of truth. Every other failure - an expired token, a
+// rate limit, a server error, a network problem - says nothing about the
+// repositories of the list. The list is then unknown rather than curated,
+// and it must not be rendered: writing it would replace a curated README
+// with a list that is missing entries without a word.
+func TestEnrichAndFilterStopsOnALookupThatIsNotAMissingRepository(t *testing.T) {
+	l := config.List{Title: "T",
+		Categories: []*config.Category{{Name: "Repositories", Items: []*config.Item{
+			{Type: config.ItemGitHub, Repo: "a/b"},
+			{Type: config.ItemGitHub, Repo: "c/d"},
+		}}}}
+	enr := render.Enricher{GH: failingGH{err: errors.New("the API is down")}, Now: clockwork.NewRealClock()}
+
+	_, err := enr.EnrichAndFilter(context.Background(), l)
+	require.Error(t, err)
+
+	// The failure is not reported as a missing repository, so that the
+	// callers stop the run instead of writing what is left of the list.
+	var lookupErr *render.LookupError
+	require.False(t, errors.As(err, &lookupErr),
+		"a list that is unknown must not be reported as a list of missing repositories")
+
+	var unavailable *render.UnavailableError
+	require.True(t, errors.As(err, &unavailable),
+		"the failure must be reported as an unavailable repository")
+	require.Equal(t, "a/b", unavailable.Repo)
+}
+
+// TestEnrichAndFilterDropsARepositoryThatIsGone makes sure that a
+// repository that does not exist any more is dropped from the list and
+// reported as a lookup failure.
+//
+// The curation is the source of truth: the list does not name the repository
+// any more, so the entry is dropped. The caller is told about it, so that a
+// deleted repository does not empty a curated list without a word.
+func TestEnrichAndFilterDropsARepositoryThatIsGone(t *testing.T) {
+	notFound := &ghapi.ErrorResponse{
+		Response: &http.Response{StatusCode: http.StatusNotFound},
+		Message:  "Not Found",
+	}
+	l := config.List{Title: "T",
+		Categories: []*config.Category{{Name: "Repositories", Items: []*config.Item{
+			{Type: config.ItemGitHub, Repo: "a/b"},
+		}}}}
+	enr := render.Enricher{GH: failingGH{err: notFound}, Now: clockwork.NewRealClock()}
+
+	out, err := enr.EnrichAndFilter(context.Background(), l)
+	require.Error(t, err)
+
+	var lookupErr *render.LookupError
+	require.True(t, errors.As(err, &lookupErr),
+		"a repository that is gone must be reported as a lookup failure")
+	require.Equal(t, 1, lookupErr.Failed)
+	require.Equal(t, 1, lookupErr.Total)
+
+	var unavailable *render.UnavailableError
+	require.False(t, errors.As(err, &unavailable),
+		"a repository that is gone must not stop the run")
+	require.Empty(t, out.Categories[0].Items, "the entry of the repository that is gone is dropped")
 }
