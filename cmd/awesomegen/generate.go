@@ -93,6 +93,15 @@ func runGenerateWith(cmd *cobra.Command, opts *options, gen *generator) error {
 		return err
 	}
 
+	// Every output path is checked before the first request is sent. The
+	// check is the one the write performs, so that a configuration that is
+	// reported as valid is one the generator can write. It runs in a dry
+	// run as well: a rehearsal that accepts a path the run refuses is
+	// worse than no rehearsal at all.
+	if err := checkOutputPaths(root, outputs); err != nil {
+		return err
+	}
+
 	enr := render.Enricher{GH: gen.GH, Now: gen.Clock, Log: log}
 
 	for i, list := range cfg.Lists {
