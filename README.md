@@ -4,7 +4,7 @@
 [![Build](https://img.shields.io/github/actions/workflow/status/davidcollom/awesomegen/ci.yml?branch=main)](https://github.com/davidcollom/awesomegen/actions/workflows/ci.yml)
 [![License](https://img.shields.io/github/license/davidcollom/awesomegen)](LICENSE)
 
-**awesomegen** is a Go 1.26 CLI and GitHub Action that turns public
+**awesomegen** is a Go 1.27 CLI and GitHub Action that turns public
 [GitHub Star Lists](https://docs.github.com/en/account-and-profile/starring-and-unstarring-repositories/organizing-stars-with-lists)
 into [Awesome List](https://awesome.re)-style `README.md` files. You curate the
 list by starring repositories on GitHub; awesomegen renders the README, keeps
@@ -45,7 +45,7 @@ lost entries without a word.
 go install github.com/davidcollom/awesomegen/cmd/awesomegen@latest
 ```
 
-The module requires Go 1.26 or newer. Released binaries for Linux, macOS and
+The module requires Go 1.27.3 or newer. Released binaries for Linux, macOS and
 Windows (`amd64` and `arm64`) are attached to the
 [releases](https://github.com/davidcollom/awesomegen/releases).
 
@@ -347,7 +347,7 @@ $ awesomegen version
 awesomegen 1.2.3
 commit:      6f1c2d0a9b8e7f6a5b4c3d2e1f0a9b8c7d6e5f4a
 commit date: 2026-01-31T09:15:00Z
-go:          go1.26.0
+go:          go1.27.3
 platform:    linux/amd64
 ```
 
@@ -498,7 +498,7 @@ make build
 ./bin/awesomegen --version
 ```
 
-The project needs Go 1.26 or newer and nothing else: the linter, GoReleaser
+The project needs Go 1.27.3 or newer and nothing else: the linter, GoReleaser
 and govulncheck are run through `go run` with a pinned version. The release
 itself is cut by the release workflow, when the tag is pushed.
 
