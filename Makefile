@@ -104,7 +104,12 @@ release: ## Cut a release with GoReleaser (requires a clean git tree and a tag)
 
 .PHONY: snapshot
 snapshot: ## Build a snapshot release with GoReleaser (nothing is published)
-	$(GO) run github.com/goreleaser/goreleaser/v2@$(GORELEASER_VERSION) release --snapshot --clean
+	# The SBOM, the signatures and the container image are skipped: they
+	# need syft, cosign with an OIDC token and a Docker daemon, none of
+	# which a local rehearsal has. The artefacts of the snapshot are not
+	# published, so none of the three would be of any use.
+	$(GO) run github.com/goreleaser/goreleaser/v2@$(GORELEASER_VERSION) release --snapshot --clean \
+		--skip=sbom --skip=sign --skip=docker
 
 .PHONY: clean
 clean: ## Remove the build output

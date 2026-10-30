@@ -135,6 +135,10 @@ jobs:
     permissions:
       # Attach the SBOM to the release that GoReleaser created.
       contents: write
+      # The action downloads the workflow artefact through the REST API of
+      # the Actions before it attaches it to the release, and that download
+      # needs this permission.
+      actions: read
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -221,7 +225,7 @@ jobs:
             echo "::error::No signature bundles were produced"
             exit 1
           fi
-          gh release upload "${GITHUB_REF_NAME}" "${signatures[@]}" --clobber
+          gh release upload "${GITHUB_REF_NAME}" "${signatures[@]}" --clobber --repo "${GITHUB_REPOSITORY}"
 
       - name: Attest the build provenance
         # One attestation covers every archive, because the subjects are
@@ -252,5 +256,9 @@ jobs:
           set -euo pipefail
           # A draft that never reaches this step is never published, which
           # is the point: the artefacts stay available for inspection.
-          gh release edit "${TAG}" --draft=false
+          #
+          # The repository is named explicitly: this job does not check the
+          # sources out, so there is no git remote that "gh" could read the
+          # repository from.
+          gh release edit "${TAG}" --draft=false --repo "${GITHUB_REPOSITORY}"
           echo "Published ${TAG}"

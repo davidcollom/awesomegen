@@ -195,7 +195,9 @@ CI runs on every push to `main` and on every pull request: `gofmt`, `go vet`,
 
 To rehearse a release without publishing anything, use `make snapshot`. The
 snapshot version carries a `-next` suffix so it can never be confused with a
-real release.
+real release. The snapshot skips the SBOM, the signatures and the container
+image: they need syft, cosign with an OIDC token and a Docker daemon, and
+none of the three is published anyway.
 
 ---
 
