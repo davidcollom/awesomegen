@@ -115,3 +115,14 @@ func TestAnchorSetFollowsGitHub(t *testing.T) {
 	require.Equal(t, "ai-2", set.unique("AI"))
 	require.Equal(t, "ai-1-1", set.unique("ai-1"))
 }
+
+// TestSanitizeURLEncodesTheBackslash makes sure that a backslash cannot end
+// the link destination.
+//
+// In Markdown a backslash starts an escape sequence, so a URL that ends with
+// one would swallow the bracket that closes the link and the rest of the
+// line with it.
+func TestSanitizeURLEncodesTheBackslash(t *testing.T) {
+	require.Equal(t, "https://example.com/path%5C", sanitizeURL("https://example.com/path\\"))
+	require.Equal(t, "https://example.com/a%5Cb", sanitizeURL("https://example.com/a\\b"))
+}

@@ -98,6 +98,10 @@ func sanitizeText(s string) string {
 // The angle brackets are encoded as well: a URL that carries them would
 // otherwise end the link destination and turn the rest of it into raw HTML.
 //
+// The backslash is escaped as well: in Markdown it starts an escape
+// sequence, so a URL that ends with one would swallow the bracket that
+// closes the link and the rest of the line.
+//
 // The rules are the ones the configuration loader enforces, so that an entry
 // that passed the validation is written and an entry that did not is
 // reported while the configuration is read.
@@ -115,6 +119,7 @@ func sanitizeURL(raw string) string {
 		" ", "%20",
 		"<", "%3C",
 		">", "%3E",
+		"\\", "%5C",
 	).Replace(raw)
 }
 
