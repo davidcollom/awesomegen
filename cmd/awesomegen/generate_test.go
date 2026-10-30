@@ -262,7 +262,14 @@ func TestGenerateDryRunRejectsAnUnwritableOutput(t *testing.T) {
 // The comment names the file the document would have been written to. A
 // path that carries the characters that end a comment would put the rest
 // of the path into the document.
+//
+// The test needs files whose names carry those characters, and Windows
+// refuses to create a file whose name holds a ">". The escaping itself is
+// covered on every platform by TestCommentTextKeepsTheCommentClosed.
 func TestGenerateDryRunKeepsTheCommentClosed(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows does not allow a \">\" in the name of a file")
+	}
 	for _, tc := range []struct {
 		name   string
 		output string
@@ -289,6 +296,33 @@ func TestGenerateDryRunKeepsTheCommentClosed(t *testing.T) {
 			// The comment is closed exactly once: the path did not
 			// end it.
 			require.Equal(t, 1, strings.Count(out, "-->"))
+		})
+	}
+}
+
+// TestCommentTextKeepsTheCommentClosed makes sure that a text cannot end
+// the comment of the dry run.
+//
+// A comment must not contain "--" and it ends at the first ">", so a path
+// that carries them would end the comment early and put the rest of the
+// path into the document.
+//
+// The test works on the text alone, so that it runs on every platform: a
+// file whose name holds a ">" cannot be created on Windows.
+func TestCommentTextKeepsTheCommentClosed(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"a comment in the path", "README-->.md", "README- -&gt;.md"},
+		{"an angle bracket in the path", "README>.md", "README&gt;.md"},
+		{"a line feed in the path", "README\n.md", "README .md"},
+		{"a carriage return in the path", "README\r.md", "README .md"},
+		{"a plain path", "docs/README.md", "docs/README.md"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, commentText(tc.in))
 		})
 	}
 }
