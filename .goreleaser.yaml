@@ -153,10 +153,14 @@ dockers_v2:
     images:
       - "ghcr.io/{{ .Env.GH_OWNER }}/{{ .ProjectName }}"
     tags:
-      - "{{ .Tag }}"
-      - "v{{ .Major }}"
-      - "v{{ .Major }}.{{ .Minor }}"
-      - "latest"
+      # The image is pushed to a staging tag only.
+      #
+      # The tags that consumers use - the version, the major version, the
+      # minor version and "latest" - are promoted by the `publish` job of the
+      # release workflow, after the signatures, the attestation and the SBOM
+      # are in place. A consumer that pulls "latest" therefore never
+      # receives an image whose release has not been completed.
+      - "{{ .Tag }}-staging"
     platforms:
       - linux/amd64
       - linux/arm64

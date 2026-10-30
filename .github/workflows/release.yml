@@ -4,12 +4,17 @@
 #
 # Design notes
 # ------------
-# * The workflow is split into three jobs with narrowly scoped permissions:
+# * The workflow is split into four jobs with narrowly scoped permissions:
 #     - `goreleaser` builds the artefacts, publishes the GitHub release and
-#       pushes the multi-architecture container image to GHCR.
+#       pushes the multi-architecture container image to GHCR under a staging
+#       tag.
 #     - `sbom` attaches an aggregate SPDX SBOM to the release.
 #     - `sign` signs the artefacts with cosign (keyless, via OIDC) and
 #       records a GitHub build provenance attestation.
+#     - `publish` publishes the release and moves the tags of the container
+#       image that consumers use. The tags only move once every other job
+#       has succeeded, so a consumer never pulls an image whose release was
+#       not completed.
 # * `id-token: write` is granted to the `sign` job only. Keyless signing and
 #   artifact attestations both need an OIDC token, and no other job needs
 #   one.
@@ -256,6 +261,8 @@ jobs:
     permissions:
       # Promote the draft to a published release.
       contents: write
+      # Move the tags of the container image.
+      packages: write
     steps:
       - name: Publish the release
         env:
@@ -271,3 +278,43 @@ jobs:
           # repository from.
           gh release edit "${TAG}" --draft=false --repo "${GITHUB_REPOSITORY}"
           echo "Published ${TAG}"
+
+      - name: Set up Docker Buildx
+        # `imagetools` is part of buildx. The action installs it and makes
+        # its version the one that is used.
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Log in to GHCR
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Promote the container tags
+        # GoReleaser pushed the image with a staging tag. The tags that
+        # consumers use are moved here, after the signatures, the attestation
+        # and the SBOM are in place, so that a consumer never pulls an image
+        # whose release was not completed.
+        #
+        # The staging tag is left in place: it is the source of the
+        # promotion, so a repeated run of this job can promote the image
+        # again.
+        env:
+          GHCR_IMAGE: ghcr.io/${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          staging="${GHCR_IMAGE}:${TAG}-staging"
+          # "v1.2.3" becomes "v1" and "v1.2".
+          major="${TAG%%.*}"
+          minor="${TAG%.*}"
+          # The manifest of the staging tag is copied as it is, so the
+          # attestation of the image travels with it.
+          docker buildx imagetools create \
+            --tag "${GHCR_IMAGE}:${TAG}" \
+            --tag "${GHCR_IMAGE}:${major}" \
+            --tag "${GHCR_IMAGE}:${minor}" \
+            --tag "${GHCR_IMAGE}:latest" \
+            "${staging}"
+          echo "Promoted ${staging} to ${TAG}, ${major}, ${minor} and latest"
