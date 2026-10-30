@@ -170,3 +170,40 @@ func TestGenerateRefusesToOverwriteWithAnEmptyREADME(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "curated\n", string(data))
 }
+
+// TestGenerateDryRunKeepsTheCommentClosed makes sure that the path of the
+// output cannot end the comment of the dry run.
+//
+// The comment names the file the document would have been written to. A
+// path that carries the characters that end a comment would put the rest
+// of the path into the document.
+func TestGenerateDryRunKeepsTheCommentClosed(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		output string
+		want   string
+	}{
+		{"a comment in the path", "README-->.md", "README- -&gt;.md"},
+		{"an angle bracket in the path", "README>.md", "README&gt;.md"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			cfgPath := writeConfigIn(t, dir, `lists:
+  - title: "Tools"
+    output: "`+tc.output+`"
+    sources:
+      - user: davidcollom
+        slug: tools
+`)
+
+			opts := &options{configPath: cfgPath, dryRun: true}
+			out, err := runGenerateWithArgs(t, opts, testGenerator(t))
+			require.NoError(t, err)
+
+			require.Contains(t, out, "<!-- awesomegen: "+tc.want+" -->")
+			// The comment is closed exactly once: the path did not
+			// end it.
+			require.Equal(t, 1, strings.Count(out, "-->"))
+		})
+	}
+}
