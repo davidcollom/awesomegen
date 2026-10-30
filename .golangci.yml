@@ -37,7 +37,7 @@ linters:
       disabled-checks:
         # `os.Exit` inside a function that has a deferred call is a real
         # smell, but restructuring main() is not worth failing a build over.
-        # Tracked in BACKLOG.md.
+        # Tracked in issue #116.
         - exitAfterDefer
     staticcheck:
       checks:
