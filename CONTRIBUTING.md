@@ -142,6 +142,11 @@ the summary under ~72 characters.
 
 ## Pull requests
 
+The work that is left is tracked in the GitHub issues, not in a file of the
+repository: every issue names the files it touches, what the change should
+do and the test that has to fail without it. The issues that are open and
+carry the `good first issue` label are a good place to start.
+
 Before you open a pull request:
 
 1. `make fmt-check vet lint test` passes.
