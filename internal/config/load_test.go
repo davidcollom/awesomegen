@@ -450,3 +450,19 @@ func TestLoadRejectsInvalidItems(t *testing.T) {
 		})
 	}
 }
+
+// TestLoadRejectsAnEmptyFile makes sure that a configuration file that
+// holds nothing is reported in a way that points at the problem.
+//
+// The decoder returns "EOF" for a file without a document, which says
+// nothing about the configuration. The missing lists are what the user has
+// to fix.
+func TestLoadRejectsAnEmptyFile(t *testing.T) {
+	for _, body := range []string{"", "# nothing but a comment\n"} {
+		path := writeConfig(t, body)
+		_, err := config.Load(path)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "lists is required")
+		require.NotContains(t, err.Error(), "EOF")
+	}
+}

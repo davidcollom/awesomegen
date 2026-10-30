@@ -62,9 +62,14 @@ func Load(path string) (Config, error) {
 	// Reject unknown fields so a misspelled key is reported instead of
 	// being silently ignored.
 	dec.KnownFields(true)
-	if err := dec.Decode(&c); err != nil {
+	// A file that holds no document at all - an empty file, or one that
+	// carries nothing but comments - leaves the configuration empty, and
+	// the validation below reports what is missing. That is more helpful
+	// than the "EOF" of the decoder.
+	if err := dec.Decode(&c); err != nil && !errors.Is(err, io.EOF) {
 		return Config{}, fmt.Errorf("parse config %s: %w", path, err)
 	}
+
 	// The decoder stops after the first document, so the rest of the file
 	// would be ignored without a word. A configuration is a single
 	// document, so a second one is reported.
