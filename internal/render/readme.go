@@ -371,6 +371,15 @@ func writeRepoItem(doc *md.Markdown, m *github.RepoMeta, it *config.Item, starsF
 		return false
 	}
 
+	// The curated title wins over the name of the repository: the entry was
+	// written by hand, and the hand-written title is what the reader is
+	// meant to see. The name of the repository is the fallback, because it
+	// is what the entry names.
+	title := sanitizeText(it.Title)
+	if title == "" {
+		title = sanitizeText(m.FullName)
+	}
+
 	// Every part carries the separator that belongs to it, so that an entry
 	// without a description does not end with a dangling separator.
 	tail := ""
@@ -387,7 +396,7 @@ func writeRepoItem(doc *md.Markdown, m *github.RepoMeta, it *config.Item, starsF
 		tail += " — " + sanitizeText(it.Notes)
 	}
 	doc.PlainTextf("- [%s](%s)%s",
-		sanitizeText(m.FullName), url, tail)
+		title, url, tail)
 	return true
 }
 

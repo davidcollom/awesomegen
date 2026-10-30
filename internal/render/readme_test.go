@@ -617,3 +617,45 @@ func TestMarkdownRendersAnExplicitLinkAsALink(t *testing.T) {
 	require.NotContains(t, md, "https://github.com/a/one")
 	require.NotContains(t, md, "a/one")
 }
+
+// TestMarkdownRendersTheCuratedTitleOfARepository makes sure that the
+// title of a repository entry is the one that was curated.
+//
+// The title of an entry is written by hand, so it is what the reader is
+// meant to see. The name of the repository is the fallback for the entries
+// that do not carry a title.
+func TestMarkdownRendersTheCuratedTitleOfARepository(t *testing.T) {
+	md, err := Markdown(config.List{
+		Title: "Curated titles",
+		Categories: []*config.Category{
+			{Name: "Repositories", Items: []*config.Item{
+				{
+					Type:  config.ItemGitHub,
+					Repo:  "a/one",
+					Title: "The one tool",
+					GHMeta: &github.RepoMeta{
+						FullName: "a/one",
+						URL:      "https://github.com/a/one",
+						Stars:    42,
+					},
+				},
+				{
+					Type: config.ItemGitHub,
+					Repo: "b/two",
+					GHMeta: &github.RepoMeta{
+						FullName: "b/two",
+						URL:      "https://github.com/b/two",
+						Stars:    7,
+					},
+				},
+			}},
+		},
+	})
+	require.NoError(t, err)
+
+	// The curated title is rendered instead of the name of the repository.
+	require.Contains(t, md, "- [The one tool](https://github.com/a/one)")
+	require.NotContains(t, md, "- [a/one](https://github.com/a/one)")
+	// An entry without a title keeps the name of the repository.
+	require.Contains(t, md, "- [b/two](https://github.com/b/two)")
+}
