@@ -16,10 +16,10 @@ Status: `open` unless stated otherwise.
 
 ### 1. The README claims the wrong Go version and points at the wrong badge
 `README.md:4` uses the `release.yml` workflow for the build badge, and
-`README.md:7` says "a Go 1.23 CLI" while `go.mod` requires `go 1.26.0`.
+`README.md:7` says "a Go 1.23 CLI" while `go.mod` requires `go 1.27.3`.
 Users on Go 1.23 cannot build the project at all.
 * Point the badge at the new `ci.yml` workflow.
-* Say Go 1.26, or derive the version from `go.mod`.
+* Say Go 1.27, or derive the version from `go.mod`.
 * Fix the typo at `README.md:64` (`aesomegen` -> `awesomegen`).
 * Replace the manual `golangci-lint run` snippet with `make lint`.
 

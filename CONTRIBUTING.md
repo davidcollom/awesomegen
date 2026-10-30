@@ -12,7 +12,7 @@ Lists into Awesome-list `README.md` files. It is maintained by
 
 | Tool       | Version                                               |
 | ---------- | ----------------------------------------------------- |
-| Go         | **1.26 or newer** (see the `go` directive in `go.mod`) |
+| Go         | **1.27.3 or newer** (see the `go` directive in `go.mod`) |
 | Git        | any recent version                                     |
 | Docker     | optional, only needed for the container image          |
 | `make`     | any recent version                                     |
@@ -155,9 +155,9 @@ Before you open a pull request:
    harder and slows it down.
 
 CI runs on every push to `main` and on every pull request: `gofmt`, `go vet`,
-`golangci-lint`, the unit tests on Linux, macOS and Windows with Go 1.26 and
-1.27, a cross compilation for every release target, a container build and
-`govulncheck`.
+`golangci-lint`, the unit tests on Linux, macOS and Windows with the version
+of Go that `go.mod` requires, a cross compilation for every release target, a
+container build and `govulncheck`.
 
 ---
 
