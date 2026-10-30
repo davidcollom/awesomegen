@@ -201,3 +201,16 @@ release:
   # workflow, which applies the same rule: a pre-release only moves its own
   # version tag and never "latest", "vMAJOR" or "vMAJOR.MINOR".
   prerelease: auto
+  # A failed run leaves the draft release behind: the signing job or the
+  # SBOM job can fail after the release was created. The next run has to
+  # find that draft again instead of creating a second release for the
+  # same tag, which GitHub refuses with "tag_name already exists" - and the
+  # tag would be burnt.
+  #
+  # The lookup that GoReleaser uses by default only returns published
+  # releases, so a draft is only found when it is searched for explicitly.
+  use_existing_draft: true
+  # The artefacts of the failed run are replaced by the new ones. Without
+  # this, every artefact that is already attached to the draft makes the
+  # upload fail.
+  replace_existing_artifacts: true

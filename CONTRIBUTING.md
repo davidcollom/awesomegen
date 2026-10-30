@@ -48,12 +48,18 @@ make build
 | `make schema-check` | fail when `config-schema.json` is out of date                  |
 | `make tidy`         | run `go mod tidy`                                              |
 | `make vuln`         | run govulncheck against the dependency graph                   |
-| `make release`      | cut a release with GoReleaser                                  |
+| `make release`      | prepare the release locally (the workflow publishes it)       |
 | `make snapshot`     | build a snapshot release with GoReleaser (nothing is published) |
 | `make clean`        | remove `bin/`, `dist/` and `coverage.out`                      |
 
 `make release` and `make snapshot` need a clean working tree, because
 GoReleaser refuses to publish from a dirty tree.
+
+`make release` creates the draft release and the artefacts of the current
+tag. It skips the SBOM, the signatures and the container image: they need
+syft, cosign with an OIDC token and a Docker daemon, none of which a local
+machine has. The release workflow does all three when the tag is pushed,
+and it reuses the draft that `make release` created.
 
 ---
 

@@ -99,8 +99,13 @@ vuln: ## Run govulncheck against the dependency graph
 	$(GO) run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) ./...
 
 .PHONY: release
-release: ## Cut a release with GoReleaser (requires a clean git tree and a tag)
-	$(GO) run github.com/goreleaser/goreleaser/v2@$(GORELEASER_VERSION) release --clean
+release: ## Prepare the release locally (the workflow signs and publishes it)
+	# The SBOM, the signatures and the container image are skipped: they
+	# need syft, cosign with an OIDC token and a Docker daemon, none of
+	# which a local machine has. The release workflow does all three when
+	# the tag is pushed, and it reuses the draft that this target creates.
+	$(GO) run github.com/goreleaser/goreleaser/v2@$(GORELEASER_VERSION) release --clean \
+		--skip=sbom --skip=sign --skip=docker
 
 .PHONY: snapshot
 snapshot: ## Build a snapshot release with GoReleaser (nothing is published)
