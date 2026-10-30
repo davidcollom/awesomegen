@@ -44,3 +44,23 @@ func TestTitlecaseKeys_NonAlpha(t *testing.T) {
 	got := render.TitlecaseKeys(input, locale)
 	require.Equal(t, want, got)
 }
+
+// TestTitlecaseKeysKeepsTheCapitalsOfAnAcronym makes sure that a word that
+// is written in capitals keeps them.
+//
+// The topics of GitHub are written that way - "CLI", "LLM", "AWS" - and the
+// heading of a section has to read like the topic that was curated. A
+// heading that reads "Cli" is not it.
+func TestTitlecaseKeysKeepsTheCapitalsOfAnAcronym(t *testing.T) {
+	for _, tt := range []struct {
+		input string
+		want  string
+	}{
+		{"CLI tools", "CLI Tools"},
+		{"LLM and agents", "LLM And Agents"},
+		{"aws sdk", "Aws Sdk"},
+		{"mySQL", "MySQL"},
+	} {
+		require.Equal(t, tt.want, render.TitlecaseKeys(tt.input, "en"))
+	}
+}
