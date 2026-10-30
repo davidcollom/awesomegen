@@ -45,8 +45,15 @@ func ValidOwner(s string) bool {
 //
 // A star list slug uses the same character set as a repository name, so
 // the same check applies to both.
+//
+// The path segments "." and ".." pass the character set but are not names:
+// they address the directory they are in. They are rejected here, the way
+// SplitOwnerRepo rejects them.
 func ValidRepoName(s string) bool {
-	return repoPattern.MatchString(s)
+	if !repoPattern.MatchString(s) {
+		return false
+	}
+	return s != "." && s != ".."
 }
 
 type Client interface {

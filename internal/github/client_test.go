@@ -111,6 +111,10 @@ func TestValidRepoName(t *testing.T) {
 		"../etc",
 		"repo name",
 		"repo\n",
+		// The path segments "." and ".." pass the character set but
+		// are not names: they address the directory they are in.
+		".",
+		"..",
 		strings.Repeat("a", 101),
 	}
 	for _, in := range invalid {
