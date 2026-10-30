@@ -81,6 +81,44 @@ func TestResolveOutputsRejectsUnsafeDerivedPaths(t *testing.T) {
 	}
 }
 
+// TestResolveOutputsRejectsNestedOutputs makes sure that two output paths
+// where one is the directory of the other are rejected.
+//
+// Both paths are valid on their own, but they cannot both be written: the
+// generator would write the first one and then fail on the second one,
+// because the file is in the way of the directory it needs.
+func TestResolveOutputsRejectsNestedOutputs(t *testing.T) {
+	_, cfgPath := configPathIn(t)
+	cfg := config.Config{Lists: []config.List{
+		{Slug: "a", Output: "docs.md"},
+		{Slug: "b", Output: "docs.md/README.md"},
+	}}
+	_, err := resolveOutputs(cfg, cfgPath)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "which is inside")
+
+	// The other way round is the same conflict.
+	cfg = config.Config{Lists: []config.List{
+		{Slug: "a", Output: "docs.md/README.md"},
+		{Slug: "b", Output: "docs.md"},
+	}}
+	_, err = resolveOutputs(cfg, cfgPath)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "which is inside")
+}
+
+// TestResolveOutputsAcceptsSiblingPrefixes makes sure that two output paths
+// that only share a prefix are not reported as nested.
+func TestResolveOutputsAcceptsSiblingPrefixes(t *testing.T) {
+	_, cfgPath := configPathIn(t)
+	cfg := config.Config{Lists: []config.List{
+		{Slug: "a", Output: "docs.md"},
+		{Slug: "b", Output: "docs.markdown"},
+	}}
+	_, err := resolveOutputs(cfg, cfgPath)
+	require.NoError(t, err)
+}
+
 func TestWriteFileAtomicRejectsSymlinkedDirectory(t *testing.T) {
 	// A symlinked destination directory would move the generated file
 	// outside of the directory the configuration lives in.

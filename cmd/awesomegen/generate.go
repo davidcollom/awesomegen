@@ -226,7 +226,38 @@ func resolveOutputs(cfg config.Config, cfgPath string) ([]string, error) {
 		seen[p] = i
 		out[i] = p
 	}
+	// A path that is the directory of another path cannot hold both: the
+	// generator would write one of them and then fail on the other one,
+	// because the file is in the way of the directory it needs.
+	for i := range out {
+		for j := range out {
+			if i == j {
+				continue
+			}
+			if isBelow(out[j], out[i]) {
+				return nil, fmt.Errorf("lists[%d] writes to %s, which is inside %s, the file that lists[%d] writes to; set outputs that do not contain each other", j, out[j], out[i], i)
+			}
+		}
+	}
 	return out, nil
+}
+
+// isBelow reports whether path lies inside the directory dir.
+//
+// The comparison is done on the cleaned paths, so a path is never reported as
+// being inside itself and a path that only shares a prefix - "docs.md" and
+// "docs.mdx" - is not reported either.
+func isBelow(path, dir string) bool {
+	rel, err := filepath.Rel(dir, path)
+	if err != nil {
+		// The two paths are on different volumes, so one cannot be inside
+		// the other.
+		return false
+	}
+	if rel == "." || rel == ".." {
+		return false
+	}
+	return !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
 // writeFileAtomic writes to a temporary file in the destination directory and

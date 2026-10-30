@@ -241,6 +241,28 @@ func TestValidateRejectsAFileAsTheOutputDirectory(t *testing.T) {
 	require.Contains(t, err.Error(), "is not a directory")
 }
 
+// TestValidateRejectsNestedOutputs makes sure that two output paths where one
+// is the directory of the other are refused.
+//
+// Both paths are valid on their own and neither exists yet, so every other
+// check passes. The generator cannot write both, though: it would write one
+// of them and then fail on the other one, because the file is in the way of
+// the directory it needs.
+func TestValidateRejectsNestedOutputs(t *testing.T) {
+	dir := t.TempDir()
+
+	path := filepath.Join(dir, "config.yaml")
+	require.NoError(t, os.WriteFile(path, []byte(
+		"lists:\n"+
+			"  - title: \"Tools\"\n    output: \"docs.md\"\n    sources:\n      - user: \"davidcollom\"\n        slug: \"tools\"\n"+
+			"  - title: \"More\"\n    output: \"docs.md/README.md\"\n    sources:\n      - user: \"davidcollom\"\n        slug: \"more\"\n",
+	), 0o600))
+
+	_, err := run(t, "validate", "--config", path)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "which is inside")
+}
+
 func TestWriteOutputRejectsADirectoryAsTheDestination(t *testing.T) {
 	// The write refuses the directory as well, and says so.
 	root := t.TempDir()
