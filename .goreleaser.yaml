@@ -55,7 +55,10 @@ builds:
       - -s -w
       - -X main.version={{.Version}}
       - -X main.commit={{.FullCommit}}
-      - -X main.date={{.Date}}
+      # The commit date, not the build date: the build date would make the
+      # binary depend on when GoReleaser ran, and two builds of the same
+      # commit would differ.
+      - -X main.date={{.CommitDate}}
     # Reproducible builds: the timestamp of the module cache is pinned to the
     # commit time, so two builds of the same commit produce identical
     # binaries.

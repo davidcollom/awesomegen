@@ -116,27 +116,39 @@ func runGenerate(cmd *cobra.Command, opts *options) error {
 		}
 
 		out := outputs[i]
+		if err := writeOutput(cmd, root, out, md, opts.dryRun); err != nil {
+			return err
+		}
 		if opts.dryRun {
-			// The rendered document goes to the standard output, so that it
-			// can be inspected or redirected. The comment records which
-			// file it would have been written to.
-			rel, err := filepath.Rel(root, out)
-			if err != nil {
-				rel = out
-			}
-			fmt.Fprintf(cmd.OutOrStdout(), "<!-- awesomegen: %s -->\n", filepath.ToSlash(rel))
-			if _, err := fmt.Fprint(cmd.OutOrStdout(), md); err != nil {
-				return err
-			}
 			log.Info("dry run, the README was not written", "file", out, "bytes", len(md))
 			continue
-		}
-		if err := writeFileAtomic(root, out, []byte(md)); err != nil {
-			return err
 		}
 		log.Info("wrote README", "file", out, "title", list.Title, "bytes", len(md))
 	}
 	return nil
+}
+
+// writeOutput writes the rendered document to its destination, or prints it
+// when the run is a dry run.
+//
+// In a dry run the document goes to the standard output, so that it can be
+// inspected or redirected, and the destination is left untouched. The
+// comment above the document names the file it would have been written to.
+func writeOutput(cmd *cobra.Command, root, out, md string, dryRun bool) error {
+	if dryRun {
+		rel, err := filepath.Rel(root, out)
+		if err != nil {
+			rel = out
+		}
+		if _, err := fmt.Fprintf(cmd.OutOrStdout(), "<!-- awesomegen: %s -->\n", filepath.ToSlash(rel)); err != nil {
+			return err
+		}
+		if _, err := fmt.Fprint(cmd.OutOrStdout(), md); err != nil {
+			return err
+		}
+		return nil
+	}
+	return writeFileAtomic(root, out, []byte(md))
 }
 
 // configRoot returns the directory that holds the configuration file. Every

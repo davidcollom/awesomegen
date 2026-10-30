@@ -24,10 +24,13 @@ SCHEMA_FILE := config-schema.json
 
 # The version is stamped into the binary. Override it with `make build VERSION=v1.2.3`.
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
-# The commit and the build date are stamped into the binary as well, so that
+# The commit and the commit date are stamped into the binary as well, so that
 # "awesomegen version" reports where the running binary came from.
+#
+# The date is the date of the commit rather than the date of the build: a
+# build date would make two builds of the same commit differ.
 COMMIT  ?= $(shell git rev-parse HEAD 2>/dev/null || echo unknown)
-DATE    ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
+DATE    ?= $(shell git show -s --format=%cI HEAD 2>/dev/null || echo unknown)
 
 # Pinned tool versions. Bump them together with the corresponding configuration.
 GOLANGCI_LINT_VERSION ?= v2.15.0

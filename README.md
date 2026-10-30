@@ -104,10 +104,23 @@ lists:
 ```
 
 The `slug` is the last path segment of your Star List URL
-(`https://github.com/stars/<user>/lists/<slug>`). `user` and `slug` at the top
-level of a list are the shorthand for a single source, so `user:
-"davidcollom"` plus `slug: "kubernetes-cost-optimisation"` is the same thing
-as the `sources:` block above. A smaller example lives in
+(`https://github.com/stars/<user>/lists/<slug>`).
+
+`user` belongs at the **root** of the configuration file and `slug` inside the
+list. Together they are the shorthand for a single source, so this:
+
+```yaml
+version: 1
+user: "davidcollom"
+lists:
+  - slug: "kubernetes-cost-optimisation"
+    title: "Awesome Kubernetes Cost Optimisation"
+```
+
+is the same as the `sources:` block of the example above. A list that names
+its own `sources` does not need the top level `user` at all, and a
+configuration with more than one list can use `sources` to pull from several
+Star Lists. A smaller example lives in
 [example/config.yaml](example/config.yaml).
 
 ### 2. Check the configuration
@@ -147,7 +160,7 @@ reported instead of being silently ignored. The schema of the file is version
 | Key | Type | Default | Description |
 | --- | --- | --- | --- |
 | `version` | integer | `1` | Version of the configuration schema. Only `1` is supported. |
-| `user` | string | - | GitHub user or organisation used as the default owner of a source. Required for a list that has no `sources` of its own. |
+| `user` | string | - | GitHub user or organisation used as the default owner of a source. Required for a list that has no `sources` of its own. Must be a valid GitHub user or organisation name. |
 | `lists` | array of [`List`](#list---one-generated-list) | - | The lists to generate. At least one is required. |
 
 ### `List` - one generated list
@@ -155,7 +168,7 @@ reported instead of being silently ignored. The schema of the file is version
 | Key | Type | Default | Description |
 | --- | --- | --- | --- |
 | `slug` | string | - | Identifier of the list. Used as the legacy source slug and to derive the output file name when `output` is not set. Must match `^[A-Za-z0-9._-]{1,100}$`. |
-| `sources` | array of [`Source`](#source---one-star-list-to-scrape) | - | The Star Lists to scrape. When it is empty, `{user, slug}` is used as a single source. |
+| `sources` | array of [`Source`](#source---one-star-list-to-scrape) | - | The Star Lists to scrape. When it is empty, the top level `user` and the `slug` of the list are used as a single source. |
 | `title` | string | - | **Required.** The H1 title of the generated README. |
 | `tagline` | string | - | Short description. Rendered as a blockquote below the badges. |
 | `output` | string | `README.md` (single list) or `<slug>.md` (several lists) | Path of the generated file, relative to the directory of the configuration file. See [Output paths](#output-paths). |
@@ -182,8 +195,8 @@ become a group.
 
 | Key | Type | Default | Description |
 | --- | --- | --- | --- |
-| `user` | string | - | **Required.** GitHub user or organisation that owns the list. |
-| `slug` | string | - | **Required.** Slug of the list, the last segment of `/stars/<user>/lists/<slug>`. |
+| `user` | string | - | **Required.** GitHub user or organisation that owns the list. Must be a valid GitHub user or organisation name. |
+| `slug` | string | - | **Required.** Slug of the list, the last segment of `/stars/<user>/lists/<slug>`. Letters, digits, dots, dashes and underscores, at most 100 characters. |
 
 Several sources can be given for one list; their repositories are merged and de-duplicated.
 

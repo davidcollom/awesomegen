@@ -2,7 +2,9 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"path/filepath"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -52,35 +54,67 @@ func runValidate(cmd *cobra.Command, opts *options) error {
 		return err
 	}
 
-	out := cmd.OutOrStdout()
-	fmt.Fprintf(out, "%s is valid\n", opts.configPath)
-	fmt.Fprintf(out, "%d list(s)\n", len(cfg.Lists))
+	// The output paths are checked before the configuration is reported as
+	// valid, so that a path the generator would refuse is caught here too.
+	if err := checkOutputPaths(root, outputs); err != nil {
+		return err
+	}
+
+	// The summary is built in a buffer and written once, so that a broken
+	// pipe is reported as an error instead of being swallowed.
+	var b strings.Builder
+	fmt.Fprintf(&b, "%s is valid\n", opts.configPath)
+	fmt.Fprintf(&b, "%d list(s)\n", len(cfg.Lists))
 
 	for i, list := range cfg.Lists {
 		name := list.Slug
 		if name == "" {
 			name = list.Title
 		}
-		fmt.Fprintf(out, "\n- %s\n", name)
-		fmt.Fprintf(out, "  title:       %s\n", list.Title)
+		fmt.Fprintf(&b, "\n- %s\n", name)
+		fmt.Fprintf(&b, "  title:       %s\n", list.Title)
 		for _, src := range list.Sources {
-			fmt.Fprintf(out, "  source:      %s/%s\n", src.User, src.Slug)
+			fmt.Fprintf(&b, "  source:      %s/%s\n", src.User, src.Slug)
 		}
-		fmt.Fprintf(out, "  output:      %s\n", relativeTo(root, outputs[i]))
-		fmt.Fprintf(out, "  min_stars:   %d\n", list.MinStars)
-		fmt.Fprintf(out, "  stale:       %d month(s)\n", list.StaleMonthsValue())
-		fmt.Fprintf(out, "  stars:       %s\n", starsFormatName(list))
-		fmt.Fprintf(out, "  topics:      %s\n", topicGroupingName(list))
+		fmt.Fprintf(&b, "  output:      %s\n", relativeTo(root, outputs[i]))
+		fmt.Fprintf(&b, "  min_stars:   %d\n", list.MinStars)
+		fmt.Fprintf(&b, "  stale:       %d month(s)\n", list.StaleMonthsValue())
+		fmt.Fprintf(&b, "  stars:       %s\n", starsFormatName(list))
+		fmt.Fprintf(&b, "  topics:      %s\n", topicGroupingName(list))
 		items := 0
 		for _, c := range list.Categories {
 			if c != nil {
 				items += len(c.Items)
 			}
 		}
-		fmt.Fprintf(out, "  entries:     %d curated\n", items)
+		fmt.Fprintf(&b, "  entries:     %d curated\n", items)
+	}
+
+	if _, err := io.WriteString(cmd.OutOrStdout(), b.String()); err != nil {
+		return err
 	}
 
 	log.V(1).Info("configuration is valid", "lists", len(cfg.Lists))
+	return nil
+}
+
+// checkOutputPaths verifies that every output path can be written.
+//
+// The lexical check of the path is not enough: a directory of the path can
+// be a symbolic link that points outside of the configuration directory, and
+// the write would follow it. The generator rejects that when it writes, but
+// the offline check has to catch it as well, before a single request is
+// sent.
+func checkOutputPaths(root string, outputs []string) error {
+	for _, out := range outputs {
+		rel, err := filepath.Rel(root, out)
+		if err != nil {
+			return fmt.Errorf("resolve %s against %s: %w", out, root, err)
+		}
+		if err := rejectSymlinks(root, rel); err != nil {
+			return fmt.Errorf("output %s: %w", relativeTo(root, out), err)
+		}
+	}
 	return nil
 }
 

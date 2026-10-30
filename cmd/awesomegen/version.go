@@ -2,7 +2,9 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"runtime"
+	"strings"
 
 	"github.com/spf13/cobra"
 )
@@ -20,17 +22,21 @@ func newVersionCommand() *cobra.Command {
 		Short: "Print the version of awesomegen",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			out := cmd.OutOrStdout()
-			fmt.Fprintf(out, "awesomegen %s\n", version)
+			// The information is built in a buffer and written once, so
+			// that a broken pipe is reported as an error instead of
+			// being swallowed.
+			var b strings.Builder
+			fmt.Fprintf(&b, "awesomegen %s\n", version)
 			if commit != "" {
-				fmt.Fprintf(out, "commit:     %s\n", commit)
+				fmt.Fprintf(&b, "commit:     %s\n", commit)
 			}
 			if date != "" {
-				fmt.Fprintf(out, "built:      %s\n", date)
+				fmt.Fprintf(&b, "built:      %s\n", date)
 			}
-			fmt.Fprintf(out, "go:         %s\n", runtime.Version())
-			fmt.Fprintf(out, "platform:   %s/%s\n", runtime.GOOS, runtime.GOARCH)
-			return nil
+			fmt.Fprintf(&b, "go:         %s\n", runtime.Version())
+			fmt.Fprintf(&b, "platform:   %s/%s\n", runtime.GOOS, runtime.GOARCH)
+			_, err := io.WriteString(cmd.OutOrStdout(), b.String())
+			return err
 		},
 	}
 }

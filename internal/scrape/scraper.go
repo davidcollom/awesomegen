@@ -7,7 +7,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -25,14 +24,6 @@ const MaxPageBytes = 8 << 20 // 8 MiB
 
 // MaxPages caps the pagination loop.
 const MaxPages = 50
-
-// GitHub usernames and star-list slugs are restricted to a conservative
-// charset. This keeps them from being interpreted as URL syntax when they
-// are interpolated into the scrape URL.
-var (
-	userPattern = regexp.MustCompile(`^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$`)
-	slugPattern = regexp.MustCompile(`^[A-Za-z0-9._-]{1,100}$`)
-)
 
 type Scraper interface {
 	ListRepos(ctx context.Context, user, slug string) ([]string, error)
@@ -107,10 +98,13 @@ var excludedLinks = []string{
 }
 
 func (s *HTMLScraper) ListRepos(ctx context.Context, user, slug string) ([]string, error) {
-	if !userPattern.MatchString(user) {
+	// The identifiers are validated with the same check the configuration
+	// loader uses, so that a configuration that names an impossible user is
+	// rejected while it is read.
+	if !github.ValidOwner(user) {
 		return nil, fmt.Errorf("scrape: invalid user %q", user)
 	}
-	if !slugPattern.MatchString(slug) {
+	if !github.ValidRepoName(slug) {
 		return nil, fmt.Errorf("scrape: invalid list slug %q", slug)
 	}
 

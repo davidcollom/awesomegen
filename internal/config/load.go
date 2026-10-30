@@ -8,7 +8,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 
 	"golang.org/x/text/language"
@@ -23,11 +22,6 @@ const MaxConfigBytes = 4 << 20 // 4 MiB
 
 // ConfigVersion is the current configuration schema version.
 const ConfigVersion = 1
-
-// slugPattern restricts a list slug to a conservative character set. The
-// slug identifies the list and may be used to derive an output file name,
-// so it must not be able to carry path syntax.
-var slugPattern = regexp.MustCompile(`^[A-Za-z0-9._-]{1,100}$`)
 
 // allowedOutputExtensions restricts the files awesomegen is allowed to
 // write. Without this an `output` value could target a workflow file or a
@@ -97,6 +91,11 @@ func (c *Config) validate() error {
 	if len(c.Lists) == 0 {
 		return fmt.Errorf("lists is required")
 	}
+	// The top level user is the owner of a source when a list does not
+	// name one itself, so it is held to the same rules as a source user.
+	if c.User != "" && !github.ValidOwner(c.User) {
+		return fmt.Errorf("user: %q is not a valid GitHub user or organisation name", c.User)
+	}
 	for i := range c.Lists {
 		if err := c.Lists[i].validate(i, c.User); err != nil {
 			return err
@@ -122,8 +121,18 @@ func (l *List) validate(idx int, configUser string) error {
 		if strings.TrimSpace(s.User) == "" {
 			return fmt.Errorf("lists[%d].sources[%d].user: is required", idx, j)
 		}
+		// The user and the slug are used to build the URL of the Star
+		// List. The check is the one the scraper applies, so a
+		// configuration that names an impossible user is rejected here
+		// and not when the first request is made.
+		if !github.ValidOwner(s.User) {
+			return fmt.Errorf("lists[%d].sources[%d].user: %q is not a valid GitHub user or organisation name", idx, j, s.User)
+		}
 		if strings.TrimSpace(s.Slug) == "" {
 			return fmt.Errorf("lists[%d].sources[%d].slug: is required", idx, j)
+		}
+		if !github.ValidRepoName(s.Slug) {
+			return fmt.Errorf("lists[%d].sources[%d].slug: %q is not a valid Star List slug", idx, j, s.Slug)
 		}
 	}
 	if l.Title == "" {
@@ -175,7 +184,7 @@ func (l *List) validate(idx int, configUser string) error {
 	// The slug identifies the list and is used to derive a file name when no
 	// explicit output is set, so it has to obey the same conservative
 	// character set as a scraped star-list slug.
-	if l.Slug != "" && !slugPattern.MatchString(l.Slug) {
+	if l.Slug != "" && !github.ValidRepoName(l.Slug) {
 		return fmt.Errorf("lists[%d].slug: %q must contain only letters, digits, dots, dashes and underscores", idx, l.Slug)
 	}
 	for ci, c := range l.Categories {

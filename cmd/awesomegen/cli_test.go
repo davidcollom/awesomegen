@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/require"
 )
 
@@ -128,19 +129,75 @@ func TestRootCommandRejectsArguments(t *testing.T) {
 	require.Error(t, err)
 }
 
-func TestDryRunDoesNotWriteTheFile(t *testing.T) {
-	// The dry run needs a network connection to scrape the list, so the
-	// check here is limited to the flag being accepted.
-	dir := t.TempDir()
-	path := filepath.Join(dir, "config.yaml")
-	require.NoError(t, os.WriteFile(path, []byte(validConfig), 0o600))
+func TestDryRunPrintsTheDocumentAndLeavesTheFileAlone(t *testing.T) {
+	// The dry run has to print the rendered document and leave the
+	// destination untouched: a dry run that overwrote the README would be
+	// worse than no dry run at all.
+	root := t.TempDir()
+	out := filepath.Join(root, "README.md")
+	require.NoError(t, os.WriteFile(out, []byte("original\n"), 0o600))
 
-	root := newRootCommand()
-	var out bytes.Buffer
-	root.SetOut(&out)
-	root.SetErr(&out)
-	root.SetArgs([]string{"--dry-run", "--config", path, "validate"})
-	require.NoError(t, root.Execute())
+	cmd := &cobra.Command{}
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+
+	require.NoError(t, writeOutput(cmd, root, out, "rendered\n", true))
+
+	// The document is printed, with a comment that names the file it would
+	// have been written to.
+	require.Contains(t, buf.String(), "<!-- awesomegen: README.md -->")
+	require.Contains(t, buf.String(), "rendered\n")
+
+	// The file on disk is untouched.
+	data, err := os.ReadFile(out)
+	require.NoError(t, err)
+	require.Equal(t, "original\n", string(data))
+}
+
+func TestWriteOutputWritesTheFile(t *testing.T) {
+	root := t.TempDir()
+	out := filepath.Join(root, "docs", "README.md")
+
+	cmd := &cobra.Command{}
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+
+	require.NoError(t, writeOutput(cmd, root, out, "rendered\n", false))
+
+	// Nothing is printed when the document is written.
+	require.Empty(t, buf.String())
+
+	data, err := os.ReadFile(out)
+	require.NoError(t, err)
+	require.Equal(t, "rendered\n", string(data))
+}
+
+func TestValidateRejectsASymlinkedOutputDirectory(t *testing.T) {
+	// A symlinked directory would move the generated file outside of the
+	// directory the configuration lives in. The offline check has to catch
+	// that, not only the write.
+	dir := t.TempDir()
+	outside := t.TempDir()
+	require.NoError(t, os.Symlink(outside, filepath.Join(dir, "docs")))
+
+	path := filepath.Join(dir, "config.yaml")
+	require.NoError(t, os.WriteFile(path, []byte(
+		"lists:\n  - title: \"Tools\"\n    output: \"docs/README.md\"\n    sources:\n      - user: \"davidcollom\"\n        slug: \"tools\"\n",
+	), 0o600))
+
+	_, err := run(t, "validate", "--config", path)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "symbolic link")
+}
+
+func TestValidateRejectsAnImpossibleUser(t *testing.T) {
+	// The scraper refuses a user that is not a valid GitHub user name, so
+	// the offline check has to refuse it as well.
+	path := writeConfig(t, "lists:\n  - title: \"Tools\"\n    sources:\n      - user: \"bad/name\"\n        slug: \"tools\"\n")
+
+	_, err := run(t, "validate", "--config", path)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "not a valid GitHub user")
 }
 
 func TestGenerateRejectsAnInvalidConfig(t *testing.T) {

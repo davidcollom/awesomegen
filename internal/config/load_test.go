@@ -157,6 +157,26 @@ func TestLoadRejectsBadValues(t *testing.T) {
 			body: "version: 1\nuser: d\nlists:\n  - slug: ../../outside\n    title: T\n",
 			want: "slug:",
 		},
+		{
+			name: "source user that is not a GitHub user",
+			body: "version: 1\nlists:\n  - title: T\n    sources:\n      - user: \"bad/name\"\n        slug: s\n",
+			want: "not a valid GitHub user or organisation name",
+		},
+		{
+			name: "source user with path syntax",
+			body: "version: 1\nlists:\n  - title: T\n    sources:\n      - user: \"../etc\"\n        slug: s\n",
+			want: "not a valid GitHub user or organisation name",
+		},
+		{
+			name: "source slug that is not a star list slug",
+			body: "version: 1\nlists:\n  - title: T\n    sources:\n      - user: d\n        slug: \"../etc\"\n",
+			want: "is not a valid Star List slug",
+		},
+		{
+			name: "top level user that is not a GitHub user",
+			body: "version: 1\nuser: \"bad/name\"\nlists:\n  - slug: s\n    title: T\n",
+			want: "user:",
+		},
 	}
 
 	for _, tt := range tests {

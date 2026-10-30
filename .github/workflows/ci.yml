@@ -212,6 +212,9 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p dist
+          # The date of the commit, not the date of the build: a build date
+          # would make two builds of the same commit differ.
+          commit_date="$(git show -s --format=%cI HEAD)"
           for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64; do
             goos="${target%/*}"
             goarch="${target#*/}"
@@ -221,7 +224,7 @@ jobs:
             fi
             echo "Building ${goos}/${goarch}"
             CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" \
-              go build -trimpath -ldflags "-s -w -X main.version=ci -X main.commit=${GITHUB_SHA}" -o "$out" ./cmd/awesomegen
+              go build -trimpath -ldflags "-s -w -X main.version=ci -X main.commit=${GITHUB_SHA} -X main.date=${commit_date}" -o "$out" ./cmd/awesomegen
           done
 
       - name: Smoke test the linux/amd64 binary

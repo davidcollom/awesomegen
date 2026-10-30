@@ -25,6 +25,30 @@ var (
 	repoPattern  = regexp.MustCompile(`^[A-Za-z0-9._-]{1,100}$`)
 )
 
+// ValidOwner reports whether s is a valid GitHub user or organisation name.
+//
+// The check lives here so that the configuration loader and the scraper
+// agree on it: a configuration that names a user the scraper would refuse
+// has to be rejected while the configuration is read, not when the first
+// request is made.
+//
+// GitHub allows letters, digits and single hyphens in a user name, and
+// neither a leading nor a trailing hyphen, so those are rejected as well.
+func ValidOwner(s string) bool {
+	if !ownerPattern.MatchString(s) {
+		return false
+	}
+	return !strings.HasSuffix(s, "-") && !strings.Contains(s, "--")
+}
+
+// ValidRepoName reports whether s is a valid GitHub repository name.
+//
+// A star list slug uses the same character set as a repository name, so
+// the same check applies to both.
+func ValidRepoName(s string) bool {
+	return repoPattern.MatchString(s)
+}
+
 type Client interface {
 	GetRepo(ctx context.Context, ownerRepo string) (RepoMeta, error)
 }
@@ -87,7 +111,7 @@ func SplitOwnerRepo(ownerRepo string) (string, string, error) {
 	if owner == "." || owner == ".." || repo == "." || repo == ".." {
 		return "", "", fmt.Errorf("invalid owner/repo format %q", ownerRepo)
 	}
-	if !ownerPattern.MatchString(owner) || !repoPattern.MatchString(repo) {
+	if !ValidOwner(owner) || !ValidRepoName(repo) {
 		return "", "", fmt.Errorf("invalid owner/repo format %q", ownerRepo)
 	}
 	return owner, repo, nil

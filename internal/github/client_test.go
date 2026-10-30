@@ -3,6 +3,7 @@ package github_test
 import (
 	"net/http"
 	"net/url"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -74,4 +75,45 @@ func TestCheckRedirect(t *testing.T) {
 	require.Error(t, github.CheckRedirect(redirect("http://api.github.com/repos/other/repo"), []*http.Request{first}))
 	// The first request of a chain is never a redirect.
 	require.NoError(t, github.CheckRedirect(first, nil))
+}
+
+func TestValidOwner(t *testing.T) {
+	valid := []string{"davidcollom", "cli", "Owner-1", "a", "kubernetes-sigs"}
+	for _, in := range valid {
+		require.True(t, github.ValidOwner(in), "expected %q to be accepted", in)
+	}
+
+	invalid := []string{
+		"",
+		"bad/name",
+		"../etc",
+		"own er",
+		"-leading-hyphen",
+		"trailing-hyphen-",
+		"owner\n",
+		"owner?x=1",
+		strings.Repeat("a", 40),
+	}
+	for _, in := range invalid {
+		require.False(t, github.ValidOwner(in), "expected %q to be rejected", in)
+	}
+}
+
+func TestValidRepoName(t *testing.T) {
+	valid := []string{"awesomegen", "repo.with.dots", "repo_name", "Repo-2", "a"}
+	for _, in := range valid {
+		require.True(t, github.ValidRepoName(in), "expected %q to be accepted", in)
+	}
+
+	invalid := []string{
+		"",
+		"owner/repo",
+		"../etc",
+		"repo name",
+		"repo\n",
+		strings.Repeat("a", 101),
+	}
+	for _, in := range invalid {
+		require.False(t, github.ValidRepoName(in), "expected %q to be rejected", in)
+	}
 }
