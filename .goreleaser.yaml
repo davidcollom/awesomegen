@@ -172,7 +172,10 @@ dockers_v2:
       org.opencontainers.image.version: "{{ .Version }}"
       org.opencontainers.image.revision: "{{ .FullCommit }}"
     annotations:
-      org.opencontainers.image.created: "{{ .Date }}"
+      # The date of the commit the image was built from, and not the date of
+      # the build: the release has to build the same artefacts from the same
+      # commit every time, and the binaries already carry the commit date.
+      org.opencontainers.image.created: "{{ .CommitDate }}"
     # Attach an SBOM to the published image.
     sbom: true
 
