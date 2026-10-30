@@ -103,6 +103,7 @@ func runGenerateWith(cmd *cobra.Command, opts *options, gen *generator) error {
 	}
 
 	enr := render.Enricher{GH: gen.GH, Now: gen.Clock, Log: log}
+	rendered := make([]string, len(cfg.Lists))
 
 	for i, list := range cfg.Lists {
 		// 1) scrape owner/repo slugs from your Star List
@@ -169,15 +170,19 @@ func runGenerateWith(cmd *cobra.Command, opts *options, gen *generator) error {
 			return err
 		}
 
+		rendered[i] = md
+	}
+
+	for i, list := range cfg.Lists {
 		out := outputs[i]
-		if err := writeOutput(cmd, root, out, md, opts.dryRun); err != nil {
+		if err := writeOutput(cmd, root, out, rendered[i], opts.dryRun); err != nil {
 			return err
 		}
 		if opts.dryRun {
-			log.Info("dry run, the README was not written", "file", out, "bytes", len(md))
+			log.Info("dry run, the README was not written", "file", out, "bytes", len(rendered[i]))
 			continue
 		}
-		log.Info("wrote README", "file", out, "title", list.Title, "bytes", len(md))
+		log.Info("wrote README", "file", out, "title", list.Title, "bytes", len(rendered[i]))
 	}
 	return nil
 }
