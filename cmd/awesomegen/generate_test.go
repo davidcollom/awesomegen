@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -290,4 +291,31 @@ func TestGenerateDryRunKeepsTheCommentClosed(t *testing.T) {
 			require.Equal(t, 1, strings.Count(out, "-->"))
 		})
 	}
+}
+
+// TestGenerateWritesTheDocumentKeepsTheFileMode makes sure that the file
+// that was replaced keeps its mode.
+//
+// A README that only its owner may read is widened to the mode of the
+// temporary file otherwise, and the content of a public repository is not
+// a secret - but the mode of the file is the choice of the user who
+// curated it.
+func TestGenerateWritesTheDocumentKeepsTheFileMode(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the permissions of Windows do not follow the POSIX rules")
+	}
+	dir := t.TempDir()
+	cfgPath := writeConfigIn(t, dir, oneListConfig)
+
+	existing := filepath.Join(dir, "README.md")
+	require.NoError(t, os.WriteFile(existing, []byte("curated\n"), 0o600))
+
+	opts := &options{configPath: cfgPath}
+	_, err := runGenerateWithArgs(t, opts, testGenerator(t))
+	require.NoError(t, err)
+
+	fi, err := os.Stat(existing)
+	require.NoError(t, err)
+	require.Equal(t, os.FileMode(0o600), fi.Mode().Perm(),
+		"the mode of the file that was replaced is kept")
 }

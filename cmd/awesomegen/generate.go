@@ -383,6 +383,14 @@ func writeFileAtomic(root, path string, data []byte) error {
 		return fmt.Errorf("create output directory %s: %w", dir, err)
 	}
 
+	// The mode of the file that is replaced is kept: a README that only its
+	// owner may read does not become readable by everybody. A file that does
+	// not exist yet is written with the mode of a public document.
+	mode := os.FileMode(0o644)
+	if fi, err := os.Stat(path); err == nil && fi.Mode().IsRegular() {
+		mode = fi.Mode().Perm()
+	}
+
 	tmp, err := os.CreateTemp(dir, ".awesomegen-*.tmp")
 	if err != nil {
 		return fmt.Errorf("create temporary file in %s: %w", dir, err)
@@ -405,7 +413,7 @@ func writeFileAtomic(root, path string, data []byte) error {
 	if err := tmp.Close(); err != nil {
 		return fmt.Errorf("close %s: %w", tmpName, err)
 	}
-	if err := os.Chmod(tmpName, 0o644); err != nil {
+	if err := os.Chmod(tmpName, mode); err != nil {
 		return fmt.Errorf("chmod %s: %w", tmpName, err)
 	}
 	if err := os.Rename(tmpName, path); err != nil {
