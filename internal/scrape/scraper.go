@@ -89,6 +89,7 @@ var excludedLinks = []string{
 	"pricing",
 	"pulls",
 	"readme",
+	"resources",
 	"search",
 	"security",
 	"settings",

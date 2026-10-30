@@ -156,23 +156,42 @@ func categorySections(list config.List) []*section {
 }
 
 // topicSections groups the entries by GitHub topic.
+//
+// A link has no topics, so it cannot be ranked and cannot be assigned to a
+// topic. The links are kept in the fallback group, which is the group of
+// the entries that do not match any of the ranked topics, so that they are
+// rendered in every mode instead of being dropped.
 func topicSections(list config.List, items []*config.Item) []*section {
-	ranked := rankTopTags(items, list.TagAliases, list.MinTagCountValue(), list.TopTagsLimitValue())
-	if len(ranked) == 0 {
-		return nil
+	var links []*config.Item
+	var repos []*config.Item
+	for _, it := range items {
+		if it == nil {
+			continue
+		}
+		if it.GHMeta == nil {
+			links = append(links, it)
+			continue
+		}
+		repos = append(repos, it)
 	}
+
+	ranked := rankTopTags(repos, list.TagAliases, list.MinTagCountValue(), list.TopTagsLimitValue())
+	fallback := list.TopicFallbackValue()
 
 	if list.TopicGroupingMode != nil && *list.TopicGroupingMode == config.TopicGroupingModeNested {
 		nested := map[string]map[string][]*config.Item{}
-		for _, it := range items {
-			if it.GHMeta == nil {
-				continue
-			}
-			p, s := primarySecondaryForRepo(it.GHMeta, ranked, list.TagAliases, list.TopicFallback)
+		for _, it := range repos {
+			p, s := primarySecondaryForRepo(it.GHMeta, ranked, list.TagAliases, fallback)
 			if _, ok := nested[p]; !ok {
 				nested[p] = map[string][]*config.Item{}
 			}
 			nested[p][s] = append(nested[p][s], it)
+		}
+		if len(links) > 0 {
+			if _, ok := nested[fallback]; !ok {
+				nested[fallback] = map[string][]*config.Item{}
+			}
+			nested[fallback][fallback] = append(nested[fallback][fallback], links...)
 		}
 
 		var out []*section
@@ -186,7 +205,7 @@ func topicSections(list config.List, items []*config.Item) []*section {
 					items: sec[sk],
 					// The fallback group does not get a heading of its
 					// own when it is the only group of the section.
-					hideTitle: sk == list.TopicFallback && len(sec) == 1,
+					hideTitle: sk == fallback && len(sec) == 1,
 				})
 			}
 			out = append(out, primary)
@@ -196,12 +215,12 @@ func topicSections(list config.List, items []*config.Item) []*section {
 
 	// flat mode
 	groups := map[string][]*config.Item{}
-	for _, it := range items {
-		if it.GHMeta == nil {
-			continue
-		}
-		p, _ := primarySecondaryForRepo(it.GHMeta, ranked, list.TagAliases, list.TopicFallback)
+	for _, it := range repos {
+		p, _ := primarySecondaryForRepo(it.GHMeta, ranked, list.TagAliases, fallback)
 		groups[p] = append(groups[p], it)
+	}
+	if len(links) > 0 {
+		groups[fallback] = append(groups[fallback], links...)
 	}
 
 	var out []*section

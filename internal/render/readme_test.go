@@ -249,7 +249,7 @@ func TestMarkdownRejectsListWithoutEntries(t *testing.T) {
 
 	t.Run("no topic passes the threshold", func(t *testing.T) {
 		minTagCount := 5
-		_, err := Markdown(config.List{
+		md, err := Markdown(config.List{
 			Title:             "Grouped",
 			GroupByTopic:      true,
 			TopicGroupingMode: &topicGroupingFlat,
@@ -262,8 +262,62 @@ func TestMarkdownRejectsListWithoutEntries(t *testing.T) {
 				}},
 			}}},
 		})
-		require.ErrorIs(t, err, ErrNoEntries)
+		require.NoError(t, err)
+		// The threshold decides how finely the entries are grouped, not
+		// whether they are rendered at all: an entry that matches none of
+		// the ranked topics belongs to the fallback group.
+		require.Contains(t, md, "### Misc")
+		require.Contains(t, md, "https://github.com/repo/one")
 	})
+}
+
+// TestMarkdownRendersLinksWhenGroupedByTopic makes sure a link is rendered
+// when the entries are grouped by topic.
+//
+// A link has no topics, so it cannot be ranked and cannot be assigned to a
+// topic. It belongs to the fallback group, which holds the entries that
+// match none of the ranked topics.
+func TestMarkdownRendersLinksWhenGroupedByTopic(t *testing.T) {
+	topicGroupingFlat := config.TopicGroupingModeFlat
+	topicGroupingNested := config.TopicGroupingModeNested
+
+	for _, mode := range []config.TopicGroupingMode{topicGroupingFlat, topicGroupingNested} {
+		t.Run(string(mode), func(t *testing.T) {
+			md, err := Markdown(config.List{
+				Title:             "Grouped",
+				GroupByTopic:      true,
+				TopicGroupingMode: &mode,
+				Categories: []*config.Category{{Name: "Repositories", Items: []*config.Item{
+					{GHMeta: &github.RepoMeta{
+						FullName: "repo/one",
+						URL:      "https://github.com/repo/one",
+						Topics:   []string{"AI"},
+					}},
+					{Type: config.ItemLink, Title: "The Go Blog", URL: "https://go.dev/blog/"},
+				}}},
+			})
+			require.NoError(t, err)
+			require.Contains(t, md, "- [The Go Blog](https://go.dev/blog/)")
+			require.Contains(t, md, "https://github.com/repo/one")
+		})
+	}
+}
+
+// TestMarkdownRendersLinkOnlyListWhenGroupedByTopic makes sure a list that
+// only holds links is rendered when the entries are grouped by topic. The
+// links have no topics, so no topic can be ranked for them.
+func TestMarkdownRendersLinkOnlyListWhenGroupedByTopic(t *testing.T) {
+	topicGroupingFlat := config.TopicGroupingModeFlat
+	md, err := Markdown(config.List{
+		Title:             "Links Only",
+		GroupByTopic:      true,
+		TopicGroupingMode: &topicGroupingFlat,
+		Categories: []*config.Category{{Name: "Repositories", Items: []*config.Item{
+			{Type: config.ItemLink, Title: "The Go Blog", URL: "https://go.dev/blog/"},
+		}}},
+	})
+	require.NoError(t, err)
+	require.Contains(t, md, "- [The Go Blog](https://go.dev/blog/)")
 }
 
 // TestMarkdownAllocatesAnchorsAcrossTheDocument makes sure the anchors are

@@ -39,9 +39,10 @@ type List struct {
 // Default values for the optional list settings. A pointer field is only
 // defaulted when it was left unset, so an explicit 0 keeps its meaning.
 const (
-	DefaultStaleMonths  = 24
-	DefaultTopTagsLimit = 10
-	DefaultMinTagCount  = 1
+	DefaultStaleMonths   = 24
+	DefaultTopTagsLimit  = 10
+	DefaultMinTagCount   = 1
+	DefaultTopicFallback = "misc"
 )
 
 // IntOrDefault returns the value p points at, or def when p is nil.
@@ -50,6 +51,19 @@ func IntOrDefault(p *int, def int) int {
 		return def
 	}
 	return *p
+}
+
+// TopicFallbackValue returns the name of the group that holds the entries
+// which do not match any of the ranked topics.
+//
+// The default is applied here as well as in the loader, so that a list that
+// was built in code - and not read from a configuration file - produces the
+// same output.
+func (l List) TopicFallbackValue() string {
+	if l.TopicFallback == "" {
+		return DefaultTopicFallback
+	}
+	return l.TopicFallback
 }
 
 // StaleMonthsValue returns the staleness window in months. Zero means the
