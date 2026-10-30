@@ -52,6 +52,11 @@ var htmlTagPattern = regexp.MustCompile(`(?s)<[^>]*>`)
 // owner cannot inject links, images or extra structure into the generated
 // README.
 //
+// The ampersand is escaped as well: without it an HTML entity in the text
+// would be resolved by the renderer, so the heading a reader sees would no
+// longer be the text the anchor was derived from. Escaping it keeps the two
+// the same.
+//
 // strings.NewReplacer performs a single pass, so the replacement text is
 // never rescanned.
 var markdownEscaper = strings.NewReplacer(
@@ -68,6 +73,7 @@ var markdownEscaper = strings.NewReplacer(
 	`|`, `\|`,
 	`<`, `\<`,
 	`>`, `\>`,
+	`&`, `\&`,
 )
 
 // plainText removes HTML tags and collapses whitespace so that a

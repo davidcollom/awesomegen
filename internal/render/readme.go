@@ -208,11 +208,17 @@ func flatSections(list config.List, items []*config.Item) []*section {
 // The displayed text is sanitized, but the anchor is derived from the plain
 // text: GitHub derives it from the text a reader sees, not from the
 // Markdown source.
+//
+// A heading that is not rendered does not reserve an anchor either: GitHub
+// only numbers the headings it renders, so a hidden heading must not push
+// the headings after it to a numbered anchor that does not exist.
 func resolveSections(sections []*section, anchors *anchorSet) {
 	for _, s := range sections {
 		s.plain = plainText(s.plain)
 		s.title = markdownEscaper.Replace(s.plain)
-		s.anchor = anchors.unique(s.plain)
+		if !s.hideTitle {
+			s.anchor = anchors.unique(s.plain)
+		}
 		resolveSections(s.subs, anchors)
 	}
 }

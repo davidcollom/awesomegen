@@ -332,3 +332,68 @@ func TestMarkdownUsesUnixLineEndings(t *testing.T) {
 	require.NotContains(t, md, "\r", "the document must not contain carriage returns")
 	require.Contains(t, md, "\n")
 }
+
+// TestMarkdownDerivesTheAnchorFromTheVisibleHeading makes sure that the
+// anchor of a heading is the one GitHub derives from the text a reader sees.
+//
+// An HTML entity in the text would be resolved by the renderer, so the
+// heading a reader sees would no longer be the text the anchor was derived
+// from. The ampersand is escaped, so that cannot happen.
+func TestMarkdownDerivesTheAnchorFromTheVisibleHeading(t *testing.T) {
+	topicGroupingFlat := config.TopicGroupingModeFlat
+	md, err := Markdown(config.List{
+		Title:             "R&amp;D",
+		GroupByTopic:      true,
+		TopicGroupingMode: &topicGroupingFlat,
+		Categories: []*config.Category{{Name: "Repositories", Items: []*config.Item{
+			{GHMeta: &github.RepoMeta{
+				FullName: "repo/one",
+				URL:      "https://github.com/repo/one",
+				Topics:   []string{"rampd"},
+			}},
+		}}},
+	})
+	require.NoError(t, err)
+
+	// The title takes the anchor "#rampd" - the text a reader sees is
+	// "R&amp;D" and not "R&D" - so the topic is numbered: "#rampd-1".
+	require.Contains(t, md, "- [Rampd](#rampd-1)")
+	// The ampersand is escaped, so the renderer cannot resolve the entity
+	// and the heading stays what the anchor was derived from.
+	require.Contains(t, md, `R\&amp;D`)
+}
+
+// TestMarkdownDoesNotReserveAnchorsForHiddenHeadings makes sure that a
+// heading that is not rendered does not take an anchor away from the
+// headings that are.
+//
+// In the nested mode the fallback group is written under the heading of its
+// section when it is the only group of that section, so the heading of the
+// group itself is not rendered. GitHub does not number a heading it does
+// not render either, so the visible group keeps the plain anchor.
+func TestMarkdownDoesNotReserveAnchorsForHiddenHeadings(t *testing.T) {
+	topicGroupingNested := config.TopicGroupingModeNested
+	md, err := Markdown(config.List{
+		Title:             "Nested",
+		GroupByTopic:      true,
+		TopicGroupingMode: &topicGroupingNested,
+		TopicFallback:     "misc",
+		Categories: []*config.Category{{Name: "Repositories", Items: []*config.Item{
+			{GHMeta: &github.RepoMeta{
+				FullName: "repo/one",
+				URL:      "https://github.com/repo/one",
+				Topics:   []string{"ai"},
+			}},
+			{GHMeta: &github.RepoMeta{
+				FullName: "repo/two",
+				URL:      "https://github.com/repo/two",
+			}},
+		}}},
+	})
+	require.NoError(t, err)
+
+	// The visible "Misc" section keeps the plain anchor: the hidden
+	// subsection under "Ai" does not take it away.
+	require.Contains(t, md, "- [Misc](#misc)")
+	require.NotContains(t, md, "#misc-1")
+}
