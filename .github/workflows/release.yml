@@ -40,7 +40,10 @@ concurrency:
 
 env:
   GO_VERSION: '1.26.x'
-  GORELEASER_VERSION: '~> v2'
+  # The version of GoReleaser is pinned, so that a release is built with the
+  # same tool every time. Keep it in sync with GORELEASER_VERSION in the
+  # Makefile, which installs the same version for a local release.
+  GORELEASER_VERSION: 'v2.19.0'
   # Syft is used by GoReleaser to build the per-archive SBOMs.
   SYFT_VERSION: '1.55.0'
   SYFT_SHA256: 'bb65249542db5fedeeb4d3f9b018b75e7264dbfbbb10486f044581a92f90490d'
@@ -59,6 +62,9 @@ jobs:
   goreleaser:
     name: build and publish
     runs-on: ubuntu-latest
+    # A job that hangs holds a runner for hours. The release does not need
+    # that long: the build fails instead of waiting.
+    timeout-minutes: 30
     permissions:
       # Create the GitHub release and upload its assets.
       contents: write
@@ -174,6 +180,9 @@ jobs:
     name: sbom
     needs: goreleaser
     runs-on: ubuntu-latest
+    # A job that hangs holds a runner for hours. The scan does not need that
+    # long: the job fails instead of waiting.
+    timeout-minutes: 15
     permissions:
       # Attach the SBOM to the release that GoReleaser created.
       contents: write
@@ -209,6 +218,9 @@ jobs:
     # exist.
     needs: [goreleaser, sbom]
     runs-on: ubuntu-latest
+    # A job that hangs holds a runner for hours. The signing does not need
+    # that long: the job fails instead of waiting.
+    timeout-minutes: 15
     permissions:
       # Keyless cosign signing and the GitHub attestation both authenticate
       # with the workflow's OIDC identity.
@@ -311,6 +323,9 @@ jobs:
     # at all, when the signing job fails.
     needs: [goreleaser, sbom, sign]
     runs-on: ubuntu-latest
+    # A job that hangs holds a runner for hours. The promotion does not need
+    # that long: the job fails instead of waiting.
+    timeout-minutes: 15
     permissions:
       # Promote the draft to a published release.
       contents: write
