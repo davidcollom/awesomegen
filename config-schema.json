@@ -94,7 +94,7 @@
             "type": "string"
           },
           "type": "array",
-          "description": "Array of badge names"
+          "description": "Array of badge image URLs"
         },
         "categories": {
           "items": {

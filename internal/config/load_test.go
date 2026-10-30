@@ -254,6 +254,29 @@ lists:
 	require.Equal(t, config.ItemLink, items[1].Type)
 }
 
+// TestLoadRejectsSeveralDocuments makes sure that a configuration file with
+// more than one YAML document is reported.
+//
+// The decoder stops after the first document, so the rest of the file would
+// be ignored without a word.
+func TestLoadRejectsSeveralDocuments(t *testing.T) {
+	path := writeConfig(t, `version: 1
+user: d
+lists:
+  - slug: s
+    title: T
+---
+version: 1
+user: d
+lists:
+  - slug: t
+    title: U
+`)
+	_, err := config.Load(path)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "exactly one YAML document")
+}
+
 // TestLoadRejectsInvalidItems makes sure an item that cannot be rendered is
 // reported instead of being dropped.
 func TestLoadRejectsInvalidItems(t *testing.T) {
@@ -309,6 +332,33 @@ func TestLoadRejectsInvalidItems(t *testing.T) {
 			name: "item without a type and with a blank url",
 			body: "version: 1\nuser: d\nlists:\n  - slug: s\n    title: T\n    categories:\n      - name: C\n        items:\n          - url: \" \"\n",
 			want: "url: must not be blank",
+		},
+		{
+			// A URL without a scheme is dropped by the renderer, so the
+			// entry would disappear from the list without a word.
+			name: "link item with a url without a scheme",
+			body: "version: 1\nuser: d\nlists:\n  - slug: s\n    title: T\n    categories:\n      - name: C\n        items:\n          - type: link\n            url: example.com/docs\n",
+			want: "url: \"example.com/docs\" is not an absolute http(s) URL",
+		},
+		{
+			name: "item without a type and with a url without a scheme",
+			body: "version: 1\nuser: d\nlists:\n  - slug: s\n    title: T\n    categories:\n      - name: C\n        items:\n          - url: example.com/docs\n",
+			want: "url: \"example.com/docs\" is not an absolute http(s) URL",
+		},
+		{
+			name: "link item with a url without a host",
+			body: "version: 1\nuser: d\nlists:\n  - slug: s\n    title: T\n    categories:\n      - name: C\n        items:\n          - type: link\n            url: https://\n",
+			want: "does not name a host",
+		},
+		{
+			name: "link item with a javascript url",
+			body: "version: 1\nuser: d\nlists:\n  - slug: s\n    title: T\n    categories:\n      - name: C\n        items:\n          - type: link\n            url: \"javascript:alert(1)\"\n",
+			want: "is not an absolute http(s) URL",
+		},
+		{
+			name: "badge that is not a url",
+			body: "version: 1\nuser: d\nlists:\n  - slug: s\n    title: T\n    badges:\n      - awesome\n",
+			want: "badges[0]: \"awesome\" is not an absolute http(s) URL",
 		},
 	}
 	for _, tt := range tests {

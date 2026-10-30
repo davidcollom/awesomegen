@@ -2,8 +2,10 @@ package config
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -67,6 +69,16 @@ func Load(path string) (Config, error) {
 	dec.KnownFields(true)
 	if err := dec.Decode(&c); err != nil {
 		return Config{}, fmt.Errorf("parse config %s: %w", path, err)
+	}
+	// The decoder stops after the first document, so the rest of the file
+	// would be ignored without a word. A configuration is a single
+	// document, so a second one is reported.
+	var extra yaml.Node
+	if err := dec.Decode(&extra); !errors.Is(err, io.EOF) {
+		if err != nil {
+			return Config{}, fmt.Errorf("parse config %s: %w", path, err)
+		}
+		return Config{}, fmt.Errorf("parse config %s: the file must hold exactly one YAML document", path)
 	}
 
 	if err := c.validate(); err != nil {
@@ -153,6 +165,13 @@ func (l *List) validate(idx int, configUser string) error {
 			return fmt.Errorf("lists[%d].output: %w", idx, err)
 		}
 	}
+	// The badges are images, so they are URLs. A badge that is not a URL
+	// would be dropped from the generated README without a word.
+	for bi, b := range l.Badges {
+		if err := ValidateLinkURL(b); err != nil {
+			return fmt.Errorf("lists[%d].badges[%d]: %w", idx, bi, err)
+		}
+	}
 	// The slug identifies the list and is used to derive a file name when no
 	// explicit output is set, so it has to obey the same conservative
 	// character set as a scraped star-list slug.
@@ -182,6 +201,9 @@ func (l *List) validate(idx int, configUser string) error {
 				if strings.TrimSpace(it.URL) == "" {
 					return fmt.Errorf("lists[%d].categories[%d].items[%d].url: is required for a link item", idx, ci, ii)
 				}
+				if err := ValidateLinkURL(it.URL); err != nil {
+					return fmt.Errorf("lists[%d].categories[%d].items[%d].url: %w", idx, ci, ii, err)
+				}
 			case "":
 				// The type is inferred from repo or url when it is
 				// omitted, so one of them has to be present. A repo
@@ -202,6 +224,9 @@ func (l *List) validate(idx int, configUser string) error {
 						return fmt.Errorf("lists[%d].categories[%d].items[%d].repo: %w", idx, ci, ii, err)
 					}
 				case strings.TrimSpace(it.URL) != "":
+					if err := ValidateLinkURL(it.URL); err != nil {
+						return fmt.Errorf("lists[%d].categories[%d].items[%d].url: %w", idx, ci, ii, err)
+					}
 				case it.URL != "":
 					return fmt.Errorf("lists[%d].categories[%d].items[%d].url: must not be blank", idx, ci, ii)
 				default:
@@ -211,6 +236,29 @@ func (l *List) validate(idx int, configUser string) error {
 				return fmt.Errorf("lists[%d].categories[%d].items[%d].type: must be one of %q or %q", idx, ci, ii, ItemGitHub, ItemLink)
 			}
 		}
+	}
+	return nil
+}
+
+// ValidateLinkURL ensures that a URL can be written as a link.
+//
+// The renderer only writes an absolute http(s) URL that names a host, so a
+// link that carries anything else - a missing scheme, a "mailto:" address, a
+// "javascript:" address - would be dropped from the generated README without
+// a word. The check lives here, so that the loader and the renderer agree
+// on what a usable URL is.
+func ValidateLinkURL(raw string) error {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return fmt.Errorf("%q is not a valid URL", raw)
+	}
+	switch parsed.Scheme {
+	case "http", "https":
+	default:
+		return fmt.Errorf("%q is not an absolute http(s) URL", raw)
+	}
+	if parsed.Host == "" {
+		return fmt.Errorf("%q does not name a host", raw)
 	}
 	return nil
 }

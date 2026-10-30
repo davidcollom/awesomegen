@@ -22,7 +22,7 @@ type List struct {
 	Output      string      `yaml:"output,omitempty" json:"output,omitempty" jsonschema:"description=Output path relative to the config file"`                                          // Output file path or name
 	MinStars    int         `yaml:"min_stars,omitempty" json:"min_stars,omitempty" jsonschema:"description=Minimum stars required to be included"`                                      // Minimum GitHub stars required for inclusion
 	StaleMonths *int        `yaml:"stale_months,omitempty" json:"stale_months,omitempty" jsonschema:"default=24,description=Number of months to consider stale - 0 disables the check"` // Months since last update to consider stale
-	Badges      []string    `yaml:"badges,omitempty" json:"badges,omitempty" jsonschema:"description=Array of badge names"`                                                             // List of badge names to display
+	Badges      []string    `yaml:"badges,omitempty" json:"badges,omitempty" jsonschema:"description=Array of badge image URLs"`                                                        // List of badge image URLs to display
 	Categories  []*Category `yaml:"categories,omitempty" json:"categories,omitempty" jsonschema:"description=Array of categories"`                                                      // List categories; usually one auto category "Repositories"
 
 	GroupByTopic      bool               `yaml:"group_by_topic" json:"group_by_topic,omitempty" jsonschema:"default=false,description=Group repositories by GitHub topic (default: false)"`                    // Group repositories by GitHub topic (default: false)
