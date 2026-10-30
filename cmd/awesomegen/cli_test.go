@@ -207,6 +207,55 @@ func TestValidateRejectsAnImpossibleUser(t *testing.T) {
 	require.Contains(t, err.Error(), "not a valid GitHub user")
 }
 
+func TestValidateRejectsADirectoryAsTheOutput(t *testing.T) {
+	// A directory that carries the name of the README has an allowed
+	// extension and is not a symbolic link, so it passes every other check.
+	// The write would fail when the temporary file is renamed over it, so
+	// the offline check has to refuse it.
+	dir := t.TempDir()
+	require.NoError(t, os.Mkdir(filepath.Join(dir, "README.md"), 0o755))
+
+	path := filepath.Join(dir, "config.yaml")
+	require.NoError(t, os.WriteFile(path, []byte(
+		"lists:\n  - title: \"Tools\"\n    sources:\n      - user: \"davidcollom\"\n        slug: \"tools\"\n",
+	), 0o600))
+
+	_, err := run(t, "validate", "--config", path)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "is a directory")
+}
+
+func TestValidateRejectsAFileAsTheOutputDirectory(t *testing.T) {
+	// A regular file cannot hold the README either: the write would fail
+	// when it tries to create the directory.
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "docs"), []byte("not a directory\n"), 0o600))
+
+	path := filepath.Join(dir, "config.yaml")
+	require.NoError(t, os.WriteFile(path, []byte(
+		"lists:\n  - title: \"Tools\"\n    output: \"docs/README.md\"\n    sources:\n      - user: \"davidcollom\"\n        slug: \"tools\"\n",
+	), 0o600))
+
+	_, err := run(t, "validate", "--config", path)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "is not a directory")
+}
+
+func TestWriteOutputRejectsADirectoryAsTheDestination(t *testing.T) {
+	// The write refuses the directory as well, and says so.
+	root := t.TempDir()
+	out := filepath.Join(root, "README.md")
+	require.NoError(t, os.Mkdir(out, 0o755))
+
+	cmd := &cobra.Command{}
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+
+	err := writeOutput(cmd, root, out, "rendered\n", false)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "is a directory")
+}
+
 func TestGenerateRejectsAnInvalidConfig(t *testing.T) {
 	path := writeConfig(t, "lists: []\n")
 

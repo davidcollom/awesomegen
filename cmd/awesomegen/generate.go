@@ -237,14 +237,7 @@ func resolveOutputs(cfg config.Config, cfgPath string) ([]string, error) {
 // otherwise redirect the write - and the temporary file that is renamed over
 // it - outside of the directory the configuration lives in.
 func writeFileAtomic(root, path string, data []byte) error {
-	rel, err := filepath.Rel(root, path)
-	if err != nil {
-		return fmt.Errorf("resolve %s against %s: %w", path, root, err)
-	}
-	if rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return fmt.Errorf("%s is outside of %s", path, root)
-	}
-	if err := rejectSymlinks(root, rel); err != nil {
+	if err := checkWritableOutput(root, path); err != nil {
 		return err
 	}
 
@@ -277,18 +270,70 @@ func writeFileAtomic(root, path string, data []byte) error {
 	return nil
 }
 
-// rejectSymlinks verifies that none of the path components below root is a
-// symbolic link.
+// checkWritableOutput verifies that the destination of an output path can be
+// written.
+//
+// The lexical check of the path is not enough: a directory of the path can
+// be a symbolic link that points outside of the configuration directory, and
+// the write would follow it. The destination can also be a directory itself,
+// which passes every other check but cannot be replaced by a file.
+//
+// The offline check runs the same function, so that a configuration that is
+// reported as valid is one the generator can write.
+func checkWritableOutput(root, path string) error {
+	rel, err := filepath.Rel(root, path)
+	if err != nil {
+		return fmt.Errorf("resolve %s against %s: %w", path, root, err)
+	}
+	if rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return fmt.Errorf("%s is outside of %s", path, root)
+	}
+	if err := checkPathComponents(root, rel); err != nil {
+		return err
+	}
+	return rejectDirectory(root, path)
+}
+
+// rejectDirectory reports an error when the destination exists and is a
+// directory.
+//
+// A directory that carries the name of the README - "README.md" as a
+// directory, for example - passes every other check, but the write fails
+// when the temporary file is renamed over it.
+func rejectDirectory(root, path string) error {
+	fi, err := os.Lstat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			// Nothing is there yet, so the write creates the file.
+			return nil
+		}
+		return fmt.Errorf("inspect %s: %w", path, err)
+	}
+	if fi.IsDir() {
+		return fmt.Errorf("%s is a directory; refusing to write the README over it", relativeTo(root, path))
+	}
+	return nil
+}
+
+// checkPathComponents verifies that the path components below root can hold
+// the file.
 //
 // Lexical path validation does not stop a write from following a symlink: a
 // directory such as "docs" that points outside of the configuration directory
-// would move the generated file out of the allowed root.
-func rejectSymlinks(root, rel string) error {
-	cur := root
+// would move the generated file out of the allowed root. Every component but
+// the last one also has to be a directory, because the file is written into
+// it.
+func checkPathComponents(root, rel string) error {
+	segs := make([]string, 0, 4)
 	for _, seg := range strings.Split(filepath.ToSlash(rel), "/") {
 		if seg == "" || seg == "." {
 			continue
 		}
+		segs = append(segs, seg)
+	}
+
+	cur := root
+	for i, seg := range segs {
 		cur = filepath.Join(cur, seg)
 		fi, err := os.Lstat(cur)
 		if err != nil {
@@ -301,6 +346,9 @@ func rejectSymlinks(root, rel string) error {
 		}
 		if fi.Mode()&os.ModeSymlink != 0 {
 			return fmt.Errorf("%s is a symbolic link; refusing to write through it", cur)
+		}
+		if i < len(segs)-1 && !fi.IsDir() {
+			return fmt.Errorf("%s is not a directory; refusing to write the file into it", cur)
 		}
 	}
 	return nil

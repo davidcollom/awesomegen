@@ -100,18 +100,12 @@ func runValidate(cmd *cobra.Command, opts *options) error {
 
 // checkOutputPaths verifies that every output path can be written.
 //
-// The lexical check of the path is not enough: a directory of the path can
-// be a symbolic link that points outside of the configuration directory, and
-// the write would follow it. The generator rejects that when it writes, but
-// the offline check has to catch it as well, before a single request is
-// sent.
+// The check is the one the write performs, so that a configuration that is
+// reported as valid is one the generator accepts. It runs before a single
+// request is sent to GitHub.
 func checkOutputPaths(root string, outputs []string) error {
 	for _, out := range outputs {
-		rel, err := filepath.Rel(root, out)
-		if err != nil {
-			return fmt.Errorf("resolve %s against %s: %w", out, root, err)
-		}
-		if err := rejectSymlinks(root, rel); err != nil {
+		if err := checkWritableOutput(root, out); err != nil {
 			return fmt.Errorf("output %s: %w", relativeTo(root, out), err)
 		}
 	}
