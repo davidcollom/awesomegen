@@ -37,6 +37,37 @@ func TestSanitizeURL(t *testing.T) {
 	require.Equal(t, "", sanitizeURL("data:text/html;base64,PHNjcmlwdD4="))
 	require.Equal(t, "", sanitizeURL(""))
 	require.Equal(t, "", sanitizeURL("not a url"))
+	// A URL without a scheme or without a host cannot be written.
+	require.Equal(t, "", sanitizeURL("example.com/docs"))
+	require.Equal(t, "", sanitizeURL("https://"))
+}
+
+// TestSanitizeURLEncodesAngleBrackets makes sure that a URL cannot end the
+// link destination and turn the rest of it into raw HTML.
+func TestSanitizeURLEncodesAngleBrackets(t *testing.T) {
+	require.Equal(t, "https://example.com/%3Cscript%3E", sanitizeURL("https://example.com/<script>"))
+	require.Equal(t, "https://example.com/a%3Cb", sanitizeURL("https://example.com/a<b"))
+}
+
+// TestSanitizeTextKeepsProseBetweenAngleBrackets makes sure that text which
+// only happens to sit between angle brackets survives.
+//
+// Only a tag is removed: dropping the text would lose content.
+func TestSanitizeTextKeepsProseBetweenAngleBrackets(t *testing.T) {
+	require.Equal(t, `Use x \< y \> z`, sanitizeText("Use x < y > z"))
+	require.Equal(t, `\<3`, sanitizeText("<3"))
+	// A tag is still removed.
+	require.Equal(t, "", sanitizeText("<b>"))
+	require.Equal(t, "bold", sanitizeText("<b>bold</b>"))
+}
+
+// TestSanitizeTextEscapesStrikethrough makes sure that a description cannot
+// strike through its own text.
+//
+// The tildes are the syntax of the strikethrough of GitHub flavoured
+// Markdown.
+func TestSanitizeTextEscapesStrikethrough(t *testing.T) {
+	require.Equal(t, `\~\~deprecated\~\~`, sanitizeText("~~deprecated~~"))
 }
 
 func TestAnchorMatchesGitHub(t *testing.T) {
@@ -68,15 +99,19 @@ func TestAnchorSetDeduplicates(t *testing.T) {
 	require.Equal(t, "web", set.unique("Web"))
 }
 
-// TestAnchorSetReservesGeneratedAnchors makes sure that an anchor that was
-// generated for a repeated heading cannot be claimed by a later heading that
-// happens to have the same name.
-func TestAnchorSetReservesGeneratedAnchors(t *testing.T) {
+// TestAnchorSetFollowsGitHub makes sure that the anchors are handed out the
+// way GitHub hands them out.
+//
+// GitHub counts the repetitions of a heading and appends the counter to the
+// base anchor. It does not reserve the anchors it generates, so a heading
+// whose own anchor is "ai-1" keeps that anchor, even when a second "AI"
+// heading was given it before. A link to it resolves to the first heading
+// with that anchor, which is what GitHub renders as well.
+func TestAnchorSetFollowsGitHub(t *testing.T) {
 	set := newAnchorSet()
 	require.Equal(t, "ai", set.unique("AI"))
 	require.Equal(t, "ai-1", set.unique("AI!"))
-	// "ai-1" was already generated for the second "AI" heading, so this
-	// heading has to be numbered further.
-	require.Equal(t, "ai-1-1", set.unique("ai-1"))
+	require.Equal(t, "ai-1", set.unique("ai-1"))
 	require.Equal(t, "ai-2", set.unique("AI"))
+	require.Equal(t, "ai-1-1", set.unique("ai-1"))
 }

@@ -168,7 +168,10 @@ func topicSections(list config.List, items []*config.Item) []*section {
 		if it == nil {
 			continue
 		}
-		if it.GHMeta == nil {
+		// The entries are classified the way they are rendered: an entry
+		// that is a link is rendered as a link, everything else is a
+		// repository.
+		if it.IsLink() {
 			links = append(links, it)
 			continue
 		}
@@ -364,24 +367,23 @@ func writeRepoItem(doc *md.Markdown, m *github.RepoMeta, it *config.Item, starsF
 		return false
 	}
 
-	starPart := ""
+	// Every part carries the separator that belongs to it, so that an entry
+	// without a description does not end with a dangling separator.
+	tail := ""
 	if stars := humanStars(m.Stars, starsFormat, locale); stars != "" {
-		starPart = " — ⭐ " + stars
+		tail += " — ⭐ " + stars
 	}
-
-	license := ""
 	if m.License != "" {
-		license = " · " + sanitizeText(m.License)
+		tail += " · " + sanitizeText(m.License)
 	}
-
-	note := ""
+	if desc := sanitizeText(m.Description); desc != "" {
+		tail += " — " + desc
+	}
 	if it.Notes != "" {
-		note = " — " + sanitizeText(it.Notes)
+		tail += " — " + sanitizeText(it.Notes)
 	}
-
-	desc := sanitizeText(m.Description)
-	doc.PlainTextf("- [%s](%s)%s%s — %s%s",
-		sanitizeText(m.FullName), url, starPart, license, desc, note)
+	doc.PlainTextf("- [%s](%s)%s",
+		sanitizeText(m.FullName), url, tail)
 	return true
 }
 

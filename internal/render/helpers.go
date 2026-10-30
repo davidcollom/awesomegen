@@ -2,7 +2,6 @@ package render
 
 import (
 	"fmt"
-	"net/url"
 	"regexp"
 	"slices"
 	"strconv"
@@ -35,11 +34,16 @@ func humanStars(n int, format config.StarsFormat, locale string) string {
 	}
 }
 
-// htmlTagPattern matches anything that looks like an HTML tag. GitHub strips
-// raw HTML from rendered Markdown, but third-party Markdown renderers
-// (docsify, mkdocs, custom sites) frequently do not, so tags are removed
-// before the text ever reaches the generated file.
-var htmlTagPattern = regexp.MustCompile(`(?s)<[^>]*>`)
+// htmlTagPattern matches an HTML tag. GitHub strips raw HTML from rendered
+// Markdown, but third-party Markdown renderers (docsify, mkdocs, custom
+// sites) frequently do not, so tags are removed before the text ever reaches
+// the generated file.
+//
+// Only a tag that looks like one is removed: a name, optionally followed by
+// attributes and an optional closing slash. Text that merely sits between
+// angle brackets - "use x < y > z", an address in angle brackets - is prose
+// and is kept, because dropping it would silently lose content.
+var htmlTagPattern = regexp.MustCompile(`</?[a-zA-Z][a-zA-Z0-9-]*(?:\s[^<>]*)?/?>`)
 
 // markdownEscaper escapes the characters that would otherwise be interpreted
 // as Markdown syntax. It is applied to text controlled by third parties —
@@ -69,6 +73,7 @@ var markdownEscaper = strings.NewReplacer(
 	`<`, `\<`,
 	`>`, `\>`,
 	`&`, `\&`,
+	`~`, `\~`,
 )
 
 // plainText removes HTML tags and collapses whitespace so that a
@@ -89,27 +94,41 @@ func sanitizeText(s string) string {
 
 // sanitizeURL validates that a URL is an absolute http/https URL and escapes
 // the characters that would otherwise terminate a Markdown link.
+//
+// The angle brackets are encoded as well: a URL that carries them would
+// otherwise end the link destination and turn the rest of it into raw HTML.
+//
+// The rules are the ones the configuration loader enforces, so that an entry
+// that passed the validation is written and an entry that did not is
+// reported while the configuration is read.
 func sanitizeURL(raw string) string {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return ""
 	}
-	parsed, err := url.Parse(raw)
-	if err != nil {
+	if err := config.ValidateLinkURL(raw); err != nil {
 		return ""
 	}
-	switch parsed.Scheme {
-	case "http", "https":
-	default:
-		return ""
-	}
-	return strings.NewReplacer("(", "%28", ")", "%29", " ", "%20").Replace(raw)
+	return strings.NewReplacer(
+		"(", "%28",
+		")", "%29",
+		" ", "%20",
+		"<", "%3C",
+		">", "%3E",
+	).Replace(raw)
 }
 
 // anchorStripper removes the characters GitHub removes when it derives a
-// heading anchor. This mirrors github-slugger: letters, numbers, marks,
-// spaces, underscores and hyphens survive; everything else is dropped.
-var anchorStripper = regexp.MustCompile(`[^\p{L}\p{N}\p{M} _-]+`)
+// heading anchor.
+//
+// It mirrors the punctuation filter of the table of contents filter of
+// GitHub's own HTML pipeline (github/html-pipeline,
+// lib/html/pipeline/toc_filter.rb), which removes everything that is
+// neither a word character, a hyphen nor a space. A word character is a
+// letter, a mark, a number or a connector punctuation, so an underscore and
+// the rare connector characters survive while an em dash or a curly quote do
+// not.
+var anchorStripper = regexp.MustCompile(`[^\p{L}\p{N}\p{M}\p{Pc} -]+`)
 
 // Anchor converts a heading into the anchor GitHub generates for it.
 //
@@ -123,22 +142,23 @@ func Anchor(heading string) string {
 	return s
 }
 
-// anchorSet assigns unique anchors to headings, mirroring the way GitHub
+// anchorSet assigns the anchors to headings, mirroring the way GitHub
 // de-duplicates repeated headings by appending a counter.
 //
-// The anchors it hands out are reserved, so a heading can never claim an
-// anchor that was already generated for a different heading.
+// The anchors are handed out exactly as GitHub hands them out: a heading
+// that repeats the anchor of an earlier one gets the counter appended, and
+// the counter is kept per anchor. A generated anchor is not reserved, so a
+// heading whose own anchor is "ai-1" keeps it - GitHub hands out the same
+// anchor twice in that case, and a link to it is at least a link that
+// resolves.
 type anchorSet struct {
 	// seen counts how often a base anchor has been requested.
 	seen map[string]int
-	// used holds every anchor that has been handed out.
-	used map[string]struct{}
 }
 
 func newAnchorSet() *anchorSet {
 	return &anchorSet{
 		seen: map[string]int{},
-		used: map[string]struct{}{},
 	}
 }
 
@@ -146,9 +166,7 @@ func newAnchorSet() *anchorSet {
 // anchor has already been used.
 //
 // GitHub counts the repetitions of a heading and appends the counter to the
-// base anchor. A generated anchor is reserved as well, so a later heading
-// whose own anchor is "ai-1" does not take the "ai-1" that was already
-// generated for a second "ai" heading.
+// base anchor.
 func (a *anchorSet) unique(heading string) string {
 	base := Anchor(heading)
 	n := a.seen[base]
@@ -156,15 +174,7 @@ func (a *anchorSet) unique(heading string) string {
 	if n > 0 {
 		candidate = base + "-" + strconv.Itoa(n)
 	}
-	for {
-		if _, taken := a.used[candidate]; !taken {
-			break
-		}
-		n++
-		candidate = base + "-" + strconv.Itoa(n)
-	}
 	a.seen[base] = n + 1
-	a.used[candidate] = struct{}{}
 	return candidate
 }
 

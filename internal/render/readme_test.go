@@ -560,3 +560,29 @@ func TestMarkdownKeepsTheRepositoryWhenALinkNamesIt(t *testing.T) {
 	// identity away.
 	require.Contains(t, md, "- [a/one](https://github.com/a/one)")
 }
+
+// TestMarkdownOmitsTheDanglingSeparator makes sure that an entry without a
+// description does not end with a separator.
+//
+// The separator belongs to the part that follows it, so an entry that has
+// neither a description nor a note ends with the last part it does have.
+func TestMarkdownOmitsTheDanglingSeparator(t *testing.T) {
+	md, err := Markdown(config.List{
+		Title: "Separators",
+		Categories: []*config.Category{
+			{Name: "Repositories", Items: []*config.Item{
+				{GHMeta: &github.RepoMeta{FullName: "a/one", URL: "https://github.com/a/one", Stars: 12}},
+				{GHMeta: &github.RepoMeta{FullName: "b/two", URL: "https://github.com/b/two", Stars: 12},
+					Notes: "Worth a look"},
+			}},
+		},
+	})
+	require.NoError(t, err)
+
+	// The entry without a description ends with the stars: the line ends
+	// right after them.
+	require.Contains(t, md, "- [a/one](https://github.com/a/one) — ⭐ 12\n")
+	// The entry with a note has one separator, not two.
+	require.Contains(t, md, "- [b/two](https://github.com/b/two) — ⭐ 12 — Worth a look\n")
+	require.NotContains(t, md, "— —")
+}
