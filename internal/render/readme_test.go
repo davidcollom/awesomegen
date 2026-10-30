@@ -134,9 +134,12 @@ func TestMarkdownVariants(t *testing.T) {
 				"## Table of Contents",
 				"- [Ai](#ai)",
 				"- [Web](#web)",
-				"## Ai",
+				// The heading is asserted with the line breaks around it,
+				// because "## Ai" is also a substring of "### Ai" and the
+				// level of the heading would not be checked.
+				"\n### Ai\n",
 				"- [repo/alpha](https://github.com/repo/alpha) — ⭐ 100 · MIT — Alpha repo",
-				"## Web",
+				"\n### Web\n",
 				"- [repo/beta](https://github.com/repo/beta) — ⭐ 200 · GPL — Beta repo",
 				FooterStr,
 			},
@@ -180,10 +183,10 @@ func TestMarkdownVariants(t *testing.T) {
 			contains: []string{
 				"## Table of Contents",
 				"- [Data](#data)",
-				"## Data",
-				"### Analysis",
+				"\n### Data\n",
+				"\n#### Analysis\n",
 				"- [repo/one](https://github.com/repo/one) — ⭐ 500 · MIT — Repo One",
-				"### Visualization",
+				"\n#### Visualization\n",
 				"- [repo/two](https://github.com/repo/two) — ⭐ 800 · Apache — Repo Two",
 				FooterStr,
 			},

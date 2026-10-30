@@ -1,4 +1,13 @@
 <!DOCTYPE html>
+<!--
+  A trimmed copy of a real GitHub Star List page.
+
+  The structure is the one GitHub renders today: the entries live in the
+  "user-list-repositories" container, the name of the repository is the link
+  in the heading of an entry, and the auxiliary links of an entry - the
+  stargazers, the forks and the topics - sit next to it. The pagination is a
+  container of links to the pages of the list.
+-->
 <html lang="en">
 <head><title>Star List: tools</title></head>
 <body>
@@ -11,17 +20,105 @@
     <a href="/settings/profile">Settings</a>
     <a href="/davidcollom/awesomegen/stargazers">Stargazers</a>
   </nav>
-  <div class="Box-row">
-    <a href="/davidcollom/awesomegen">awesomegen</a>
-    <a href="/cli/cli">cli</a>
-    <a href="/golang/go">go</a>
-  </div>
-  <div class="Box-row">
-    <a href="/BurntSushi/ripgrep">ripgrep</a>
-    <a href="/davidcollom/awesomegen">awesomegen</a>
-  </div>
-  <div class="paginate-container">
-    <a rel="next" href="/stars/davidcollom/lists/tools?page=2">Next</a>
-  </div>
+
+  <turbo-frame id="user-profile-frame" target="_top">
+    <div id="user-list-repositories" class="border-top tmp-mt-5">
+
+      <div class="col-12 d-block width-full tmp-py-4 border-bottom color-border-muted">
+        <div class="d-inline-block mb-1">
+          <h2 class="h3">
+            <a href="/davidcollom/awesomegen">
+              <span class="text-normal">davidcollom / </span>awesomegen
+            </a>
+          </h2>
+        </div>
+        <div class="py-1">
+          <p class="d-inline-block col-9 color-fg-muted tmp-pr-4" itemprop="description">
+            Generates Awesome list README files from GitHub Star Lists.
+          </p>
+        </div>
+        <div class="f6 color-fg-muted mt-2">
+          <span class="tmp-mr-3 ml-0 tmp-ml-0">
+            <span class="repo-language-color" style="background-color: #00ADD8"></span>
+            <span itemprop="programmingLanguage">Go</span>
+          </span>
+          <a class="Link--muted tmp-mr-3" href="/davidcollom/awesomegen/stargazers">
+            <svg aria-label="star" role="img" data-component="Octicon" height="16" viewBox="0 0 16 16" width="16" data-view-component="true" class="octicon octicon-star"></svg>
+            42
+          </a>
+          <a class="Link--muted tmp-mr-3" href="/davidcollom/awesomegen/forks">
+            <svg aria-label="fork" role="img" data-component="Octicon" height="16" viewBox="0 0 16 16" width="16" data-view-component="true" class="octicon octicon-repo-forked"></svg>
+            3
+          </a>
+          Updated <relative-time datetime="2026-10-28T14:58:59Z" class="no-wrap">Oct 28, 2026</relative-time>
+        </div>
+        <div class="f6 color-fg-muted mt-2">
+          <a class="topic-tag" href="/topics/awesome-list">awesome-list</a>
+          <a class="topic-tag" href="/topics/go">go</a>
+        </div>
+      </div>
+
+      <div class="col-12 d-block width-full tmp-py-4 border-bottom color-border-muted">
+        <div class="d-inline-block mb-1">
+          <h2 class="h3">
+            <a href="/cli/cli">
+              <span class="text-normal">cli / </span>cli
+            </a>
+          </h2>
+        </div>
+        <div class="f6 color-fg-muted mt-2">
+          <a class="Link--muted tmp-mr-3" href="/cli/cli/stargazers">
+            <svg aria-label="star" role="img" data-component="Octicon" height="16" viewBox="0 0 16 16" width="16" data-view-component="true" class="octicon octicon-star"></svg>
+            100
+          </a>
+          <a class="topic-tag" href="/topics/command-line">command-line</a>
+        </div>
+      </div>
+
+      <div class="col-12 d-block width-full tmp-py-4 border-bottom color-border-muted">
+        <div class="d-inline-block mb-1">
+          <h2 class="h3">
+            <a href="/golang/go">
+              <span class="text-normal">golang / </span>go
+            </a>
+          </h2>
+        </div>
+        <div class="f6 color-fg-muted mt-2">
+          <a class="topic-tag" href="/topics/compiler">compiler</a>
+        </div>
+      </div>
+
+      <div class="col-12 d-block width-full tmp-py-4 border-bottom color-border-muted">
+        <div class="d-inline-block mb-1">
+          <h2 class="h3">
+            <a href="/education/autograding-command-grader">
+              <span class="text-normal">education / </span>autograding-command-grader
+            </a>
+          </h2>
+        </div>
+        <div class="f6 color-fg-muted mt-2">
+          <a class="topic-tag" href="/topics/education">education</a>
+        </div>
+      </div>
+
+      <div class="col-12 d-block width-full tmp-py-4 border-bottom color-border-muted">
+        <div class="d-inline-block mb-1">
+          <h2 class="h3">
+            <a href="/BurntSushi/ripgrep">
+              <span class="text-normal">BurntSushi / </span>ripgrep
+            </a>
+          </h2>
+        </div>
+        <div class="f6 color-fg-muted mt-2">
+          <a class="topic-tag" href="/topics/search">search</a>
+        </div>
+      </div>
+
+      <div class="paginate-container">
+        <div role="navigation" aria-label="Pagination" class="pagination" data-pjax="true"><span class="previous_page disabled" role="link" aria-label="Previous page" aria-disabled="true">Previous</span> <a class="current" aria-label="Page 1" aria-current="page" data-total-pages="4" href="/stars/davidcollom/lists/tools?page=1">1</a> <a rel="next" aria-label="Page 2" href="/stars/davidcollom/lists/tools?page=2">2</a> <a aria-label="Page 3" href="/stars/davidcollom/lists/tools?page=3">3</a> <a aria-label="Page 4" href="/stars/davidcollom/lists/tools?page=4">4</a> <a class="next_page" aria-label="Next page" rel="next" href="/stars/davidcollom/lists/tools?page=2">Next</a></div>
+      </div>
+
+    </div>
+  </turbo-frame>
 </body>
 </html>

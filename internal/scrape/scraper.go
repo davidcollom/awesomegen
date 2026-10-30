@@ -161,13 +161,13 @@ func (s *HTMLScraper) ListRepos(ctx context.Context, user, slug string) ([]strin
 			return nil, err
 		}
 
-		// The entries of the list are rendered as rows, so the rows are
-		// the repositories. Only the fallback scan has to tell the
-		// navigation links apart from the repositories.
+		// The entries of the list are the repositories of the list. Only
+		// the fallback scan has to tell the navigation links apart from
+		// the repositories.
 		countBefore := len(out)
-		hrefs, fromRows := repoHrefs(doc)
+		hrefs, fromEntries := repoHrefs(doc)
 		for _, href := range hrefs {
-			repo, ok := parseRepoHref(href, fromRows)
+			repo, ok := parseRepoHref(href, fromEntries)
 			if !ok {
 				continue
 			}
@@ -192,36 +192,48 @@ func (s *HTMLScraper) ListRepos(ctx context.Context, user, slug string) ([]strin
 	return out, nil
 }
 
-// repoHrefs returns the hrefs of the anchors that may point at a
-// repository, and whether they were taken from the rows of the list.
+// repoHrefs returns the hrefs of the links that point at the repositories of
+// the list, and whether they were taken from the entries of the list.
 //
-// GitHub renders the entries of a star list as rows, so the row selectors
-// are preferred. The general anchor scan is kept as a fallback so a change
-// to the markup does not silently produce an empty list.
+// GitHub renders the entries of a star list as headings inside the
+// "user-list-repositories" container. The auxiliary links of an entry - the
+// stargazers, the forks and the topics - sit next to that heading, so the
+// headings are selected specifically: an auxiliary link must never be
+// mistaken for a repository.
+//
+// The general anchor scan is kept as a fallback, so that a change of the
+// markup does not silently produce an empty list.
 func repoHrefs(doc *goquery.Document) ([]string, bool) {
-	sel := doc.Find(`div.Box-row a[href^="/"], article.Box-row a[href^="/"]`)
-	fromRows := sel.Length() > 0
-	if !fromRows {
-		sel = doc.Find(`a[href^="/"]`)
+	if sel := doc.Find(`#user-list-repositories h2 a[href^="/"]`); sel.Length() > 0 {
+		var hrefs []string
+		sel.Each(func(_ int, a *goquery.Selection) {
+			if href, ok := a.Attr("href"); ok {
+				hrefs = append(hrefs, href)
+			}
+		})
+		return hrefs, true
 	}
+
+	sel := doc.Find(`a[href^="/"]`)
 	var hrefs []string
 	sel.Each(func(_ int, a *goquery.Selection) {
 		if href, ok := a.Attr("href"); ok {
 			hrefs = append(hrefs, href)
 		}
 	})
-	return hrefs, fromRows
+	return hrefs, false
 }
 
 // parseRepoHref returns the owner/repo of a link that points at a
 // repository. Links with a query string or a fragment address a GitHub
 // page rather than a repository.
 //
-// The navigation exclusions are only applied to the fallback scan. The rows
-// of the list are the entries of the list, so a repository whose owner
-// happens to have the same name as one of the pages of GitHub - "features"
-// or "education", for example - is a repository and has to be kept.
-func parseRepoHref(href string, fromRows bool) (string, bool) {
+// The navigation exclusions are only applied to the fallback scan. The
+// entries of the list are the repositories of the list, and the names of
+// the pages of GitHub collide with real repository owners - "education" and
+// "features", for example - so a repository must never be discarded because
+// of its owner.
+func parseRepoHref(href string, fromEntries bool) (string, bool) {
 	if strings.ContainsAny(href, "?#") {
 		return "", false
 	}
@@ -232,7 +244,7 @@ func parseRepoHref(href string, fromRows bool) (string, bool) {
 	if parts[0] == "" || parts[1] == "" {
 		return "", false
 	}
-	if !fromRows && slices.Contains(excludedLinks, strings.ToLower(parts[0])) {
+	if !fromEntries && slices.Contains(excludedLinks, strings.ToLower(parts[0])) {
 		return "", false
 	}
 	return parts[0] + "/" + parts[1], true
@@ -240,11 +252,13 @@ func parseRepoHref(href string, fromRows bool) (string, bool) {
 
 // hasNext reports whether the page advertises a further page.
 //
-// The pagination control is matched precisely. The previous implementation
-// matched any anchor whose text contained "next", which was true for the
-// site banner on every page and therefore never stopped the loop.
+// The pagination of a star list is a container of links to the pages of the
+// list, and the link to the next page carries rel="next". The previous
+// implementation matched any anchor whose text contained "next", which was
+// true for the site banner on every page and therefore never stopped the
+// loop.
 func hasNext(doc *goquery.Document) bool {
-	if doc.Find(`a[rel="next"]`).Length() > 0 {
+	if doc.Find(`.paginate-container a[rel="next"], .paginate-container a.next_page`).Length() > 0 {
 		return true
 	}
 	next := false

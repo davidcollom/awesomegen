@@ -48,6 +48,15 @@ func TestListRepos(t *testing.T) {
 	require.NotContains(t, out, "marketplace/actions")
 	require.NotContains(t, out, "sponsors/davidcollom")
 	require.NotContains(t, out, "contact/report-abuse")
+	// The auxiliary links of an entry - the topics, the stargazers and the
+	// forks - sit next to the name of the repository and must not be
+	// mistaken for one.
+	require.NotContains(t, out, "topics/awesome-list")
+	require.NotContains(t, out, "topics/go")
+	require.NotContains(t, out, "topics/compiler")
+	require.NotContains(t, out, "topics/education")
+	require.NotContains(t, out, "davidcollom/awesomegen/stargazers")
+	require.NotContains(t, out, "davidcollom/awesomegen/forks")
 	// Three-segment paths are not repositories either.
 	for _, repo := range out {
 		require.Len(t, strings.Split(repo, "/"), 2, "unexpected repo %q", repo)
@@ -65,6 +74,7 @@ func TestListRepos(t *testing.T) {
 		"davidcollom/awesomegen",
 		"cli/cli",
 		"golang/go",
+		"education/autograding-command-grader",
 		"BurntSushi/ripgrep",
 	}, out)
 }
@@ -184,14 +194,20 @@ func TestListReposRejectsOversizedPage(t *testing.T) {
 // the pages of GitHub.
 //
 // The exclusions for the navigation links are only applied to the fallback
-// scan. The rows of the list are the entries of the list, so a repository
-// that is listed there is a repository.
+// scan. The entries of the list are the repositories of the list, and the
+// names collide with real repository owners - "education" and "features",
+// for example - so a repository must never be discarded because of its
+// owner.
 func TestListReposKeepsRepositoriesWhoseOwnerIsAPageName(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		_, _ = w.Write([]byte(
-			`<div class="Box-row"><a href="/education/autograding-command-grader">grader</a></div>` +
-				`<div class="Box-row"><a href="/features/awesome-actions">actions</a></div>`,
+			`<div id="user-list-repositories">` +
+				`<div><h2 class="h3"><a href="/education/autograding-command-grader">` +
+				`<span class="text-normal">education / </span>autograding-command-grader</a></h2></div>` +
+				`<div><h2 class="h3"><a href="/features/awesome-actions">` +
+				`<span class="text-normal">features / </span>awesome-actions</a></h2></div>` +
+				`</div>`,
 		))
 	}))
 	defer srv.Close()
@@ -205,6 +221,37 @@ func TestListReposKeepsRepositoriesWhoseOwnerIsAPageName(t *testing.T) {
 		"education/autograding-command-grader",
 		"features/awesome-actions",
 	}, out)
+}
+
+// TestListReposIgnoresAuxiliaryLinksOfAnEntry makes sure the links that sit
+// next to the name of a repository - the topics, the stargazers and the
+// forks - are not mistaken for repositories.
+//
+// They are two or three segment paths, so the ones that are two segments
+// long would be accepted by the general scan. The entries of the list are
+// selected specifically, so they are never collected.
+func TestListReposIgnoresAuxiliaryLinksOfAnEntry(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write([]byte(
+			`<div id="user-list-repositories">` +
+				`<div>` +
+				`<h2 class="h3"><a href="/owner/repo"><span class="text-normal">owner / </span>repo</a></h2>` +
+				`<a class="topic-tag" href="/topics/go">go</a>` +
+				`<a class="Link--muted" href="/owner/repo/stargazers">42</a>` +
+				`<a class="Link--muted" href="/owner/repo/forks">3</a>` +
+				`</div>` +
+				`</div>`,
+		))
+	}))
+	defer srv.Close()
+
+	sc := scrape.NewScraper(stdr.New(nil))
+	sc.BaseURL = srv.URL
+
+	out, err := sc.ListRepos(context.Background(), "owner", "list")
+	require.NoError(t, err)
+	require.Equal(t, []string{"owner/repo"}, out)
 }
 
 // TestListReposFallbackScanRejectsNavigationLinks makes sure the fallback
