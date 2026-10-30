@@ -17,6 +17,12 @@ the curation order and applies the filters you configure.
 3. **Filter** - `internal/render` drops the repositories that are archived, that have fewer stars than `min_stars` or that have not been pushed to within `stale_months`.
 4. **Render** - the list is written as Awesome-formatted Markdown: title, badges, tagline, table of contents, one section per category or per topic and one bullet per entry.
 
+The scrape follows the pagination of the list up to 50 pages and reads at
+most 8 MiB per page. A list that is longer than the cap, a page that holds
+no entry while it advertises further pages, and a list that yields no
+repository at all are errors: the run stops instead of writing a list that
+lost entries without a word.
+
 ## Features
 
 * Reads your public Star Lists - no manual copy and paste of repository names.
@@ -290,10 +296,13 @@ awesomegen generate --config config.yaml
 awesomegen --dry-run --config config.yaml
 ```
 
-A repository that cannot be looked up is reported and skipped, so a single
-deleted repository does not stop the list from being regenerated. A list that
-produces no entries at all is an error: the tool refuses to overwrite a
-curated README with an empty one.
+A repository that does not exist any more is reported and skipped, so a
+deleted repository does not stop the list from being regenerated. A lookup
+that fails for any other reason - an expired token, a rate limit, a server
+error - stops the run: the list is then unknown rather than curated, and it
+is not written at all. A list that produces no entries is an error, and so
+is a list whose repositories are all gone: the tool refuses to overwrite a
+curated README with an empty or an incomplete one.
 
 ### `awesomegen validate`
 

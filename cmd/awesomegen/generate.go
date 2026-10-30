@@ -137,13 +137,13 @@ func runGenerateWith(cmd *cobra.Command, opts *options, gen *generator) error {
 			// run: a single deleted repository should not stop the whole list
 			// from being regenerated.
 			log.Error(err, "some repository lookups failed", "failed", lookupErr.Failed, "total", lookupErr.Total)
-			// Every lookup failed, though. The repositories are missing from
-			// the list, and rendering it would replace the existing README
-			// with what is left - the links alone, if there are any. The run
-			// is stopped instead, so that an expired token or a rate limit
-			// cannot empty a curated list.
+			// Every repository of the list is gone, though. The list is then
+			// a list of links alone, and writing it would replace the
+			// curated README with what is left of the curation. The run is
+			// stopped instead, and the message says how to continue: the
+			// repositories have to be removed from the configuration.
 			if lookupErr.AllFailed() {
-				return fmt.Errorf("every repository lookup failed (%d of %d): refusing to overwrite %s with an incomplete README",
+				return fmt.Errorf("every repository of the list could not be loaded (%d of %d): refusing to overwrite %s with an incomplete README; remove the repositories from the configuration to render the rest of the list",
 					lookupErr.Failed, lookupErr.Total, outputs[i])
 			}
 		}
@@ -373,6 +373,7 @@ func writeFileAtomic(root, path string, data []byte) error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("create output directory %s: %w", dir, err)
 	}
+
 	tmp, err := os.CreateTemp(dir, ".awesomegen-*.tmp")
 	if err != nil {
 		return fmt.Errorf("create temporary file in %s: %w", dir, err)

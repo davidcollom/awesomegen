@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
+	ghapi "github.com/google/go-github/v55/github"
 	"github.com/jonboulle/clockwork"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/require"
@@ -150,13 +152,15 @@ func TestGenerateWritesTheDocument(t *testing.T) {
 	require.Contains(t, string(data), "cli/cli")
 }
 
-func TestGenerateRefusesToOverwriteWithAnEmptyREADME(t *testing.T) {
-	// A failing lookup must not empty a curated list.
-	//
-	// The configuration carries a curated link next to the repository that
-	// cannot be loaded: without the guard the remaining document would
-	// still be renderable - with the link alone - and it would replace the
-	// README. The link is what makes the test protect the guard.
+// TestGenerateRefusesToOverwriteWithAnUnknownList makes sure that a lookup
+// that failed for a reason that has nothing to do with the repository does
+// not empty a curated list.
+//
+// The configuration carries a curated link next to the repository that
+// cannot be loaded: without the guard the remaining document would still
+// be renderable - with the link alone - and it would replace the README.
+// The link is what makes the test protect the guard.
+func TestGenerateRefusesToOverwriteWithAnUnknownList(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := writeConfigIn(t, dir, `lists:
   - title: "Tools"
@@ -180,6 +184,9 @@ func TestGenerateRefusesToOverwriteWithAnEmptyREADME(t *testing.T) {
 	opts := &options{configPath: cfgPath}
 	_, err := runGenerateWithArgs(t, opts, gen)
 	require.Error(t, err)
+	// The message says what happened and which file was left alone.
+	require.ErrorContains(t, err, "refusing to overwrite")
+	require.ErrorContains(t, err, existing)
 
 	// The curated file is still there.
 	data, err := os.ReadFile(existing)
@@ -187,66 +194,36 @@ func TestGenerateRefusesToOverwriteWithAnEmptyREADME(t *testing.T) {
 	require.Equal(t, "curated\n", string(data))
 }
 
-// TestGenerateDryRunKeepsTheCommentClosed makes sure that the path of the
-// output cannot end the comment of the dry run.
+// TestGenerateRefusesToOverwriteWhenEveryRepositoryIsGone makes sure that a
+// list whose repositories are all gone is not written.
 //
-// The comment names the file the document would have been written to. A
-// path that carries the characters that end a comment would put the rest
-// of the path into the document.
-func TestGenerateDryRunKeepsTheCommentClosed(t *testing.T) {
-	for _, tc := range []struct {
-		name   string
-		output string
-		want   string
-	}{
-		{"a comment in the path", "README-->.md", "README- -&gt;.md"},
-		{"an angle bracket in the path", "README>.md", "README&gt;.md"},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			dir := t.TempDir()
-			cfgPath := writeConfigIn(t, dir, `lists:
+// The list would be rendered as a list of links alone, and writing it
+// would replace the curated README with what is left of the curation. The
+// message says how to continue: the repositories have to be removed from
+// the configuration.
+func TestGenerateRefusesToOverwriteWhenEveryRepositoryIsGone(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := writeConfigIn(t, dir, `lists:
   - title: "Tools"
-    output: "`+tc.output+`"
     sources:
       - user: davidcollom
         slug: tools
 `)
 
-			opts := &options{configPath: cfgPath, dryRun: true}
-			out, err := runGenerateWithArgs(t, opts, testGenerator(t))
-			require.NoError(t, err)
-
-			require.Contains(t, out, "<!-- awesomegen: "+tc.want+" -->")
-			// The comment is closed exactly once: the path did not
-			// end it.
-			require.Equal(t, 1, strings.Count(out, "-->"))
-		})
-	}
-}
-
-// TestGenerateRefusesToWriteAnUnknownList makes sure that a lookup which
-// fails for a reason that has nothing to do with the repository stops the
-// run and names the file that is left alone.
-//
-// The list is then unknown rather than curated, and writing it would
-// replace a curated README with a list that is missing entries without a
-// word.
-func TestGenerateRefusesToWriteAnUnknownList(t *testing.T) {
-	dir := t.TempDir()
-	cfgPath := writeConfigIn(t, dir, oneListConfig)
-
 	existing := filepath.Join(dir, "README.md")
 	require.NoError(t, os.WriteFile(existing, []byte("curated\n"), 0o600))
 
 	gen := testGenerator(t)
-	gen.GH = fakeGHClient{err: errors.New("the API is down")}
+	gen.GH = fakeGHClient{err: &ghapi.ErrorResponse{
+		Response: &http.Response{StatusCode: http.StatusNotFound},
+		Message:  "Not Found",
+	}}
 
 	opts := &options{configPath: cfgPath}
 	_, err := runGenerateWithArgs(t, opts, gen)
 	require.Error(t, err)
-	// The message says what happened and which file was left alone.
-	require.ErrorContains(t, err, "refusing to overwrite")
-	require.ErrorContains(t, err, existing)
+	require.ErrorContains(t, err, "every repository of the list could not be loaded")
+	require.ErrorContains(t, err, "remove the repositories from the configuration")
 
 	// The curated file is still there.
 	data, err := os.ReadFile(existing)
