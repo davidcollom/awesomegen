@@ -55,6 +55,11 @@ func NewScraper(log logr.Logger) *HTMLScraper {
 // excludedLinks lists the first path segments GitHub uses for its own
 // pages. A two-segment link whose first segment is one of these is a
 // navigation link, not a repository.
+//
+// The list is only applied to the fallback anchor scan. The rows of the
+// list are the entries of the list, and the names collide with real
+// repository owners - "features" and "education", for example - so a
+// repository must never be discarded because of its owner.
 var excludedLinks = []string{
 	"about",
 	"account",
@@ -155,10 +160,13 @@ func (s *HTMLScraper) ListRepos(ctx context.Context, user, slug string) ([]strin
 			return nil, err
 		}
 
-		// conservative anchor scan: find /owner/repo links
+		// The entries of the list are rendered as rows, so the rows are
+		// the repositories. Only the fallback scan has to tell the
+		// navigation links apart from the repositories.
 		countBefore := len(out)
-		for _, href := range repoHrefs(doc) {
-			repo, ok := parseRepoHref(href)
+		hrefs, fromRows := repoHrefs(doc)
+		for _, href := range hrefs {
+			repo, ok := parseRepoHref(href, fromRows)
 			if !ok {
 				continue
 			}
@@ -184,14 +192,15 @@ func (s *HTMLScraper) ListRepos(ctx context.Context, user, slug string) ([]strin
 }
 
 // repoHrefs returns the hrefs of the anchors that may point at a
-// repository.
+// repository, and whether they were taken from the rows of the list.
 //
 // GitHub renders the entries of a star list as rows, so the row selectors
 // are preferred. The general anchor scan is kept as a fallback so a change
 // to the markup does not silently produce an empty list.
-func repoHrefs(doc *goquery.Document) []string {
+func repoHrefs(doc *goquery.Document) ([]string, bool) {
 	sel := doc.Find(`div.Box-row a[href^="/"], article.Box-row a[href^="/"]`)
-	if sel.Length() == 0 {
+	fromRows := sel.Length() > 0
+	if !fromRows {
 		sel = doc.Find(`a[href^="/"]`)
 	}
 	var hrefs []string
@@ -200,14 +209,18 @@ func repoHrefs(doc *goquery.Document) []string {
 			hrefs = append(hrefs, href)
 		}
 	})
-	return hrefs
+	return hrefs, fromRows
 }
 
 // parseRepoHref returns the owner/repo of a link that points at a
 // repository. Links with a query string or a fragment address a GitHub
-// page rather than a repository, and the first path segment of GitHub's own
-// pages is rejected.
-func parseRepoHref(href string) (string, bool) {
+// page rather than a repository.
+//
+// The navigation exclusions are only applied to the fallback scan. The rows
+// of the list are the entries of the list, so a repository whose owner
+// happens to have the same name as one of the pages of GitHub - "features"
+// or "education", for example - is a repository and has to be kept.
+func parseRepoHref(href string, fromRows bool) (string, bool) {
 	if strings.ContainsAny(href, "?#") {
 		return "", false
 	}
@@ -218,7 +231,7 @@ func parseRepoHref(href string) (string, bool) {
 	if parts[0] == "" || parts[1] == "" {
 		return "", false
 	}
-	if slices.Contains(excludedLinks, strings.ToLower(parts[0])) {
+	if !fromRows && slices.Contains(excludedLinks, strings.ToLower(parts[0])) {
 		return "", false
 	}
 	return parts[0] + "/" + parts[1], true

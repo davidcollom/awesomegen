@@ -184,8 +184,19 @@ func (l *List) validate(idx int, configUser string) error {
 				}
 			case "":
 				// The type is inferred from repo or url when it is
-				// omitted, so one of them has to be present.
-				if strings.TrimSpace(it.Repo) == "" && strings.TrimSpace(it.URL) == "" {
+				// omitted, so one of them has to be present. A repo
+				// is validated here as well: the inference happens
+				// after the validation, so an invalid repository
+				// would otherwise only be detected when the lookup
+				// failed, and the entry would be dropped from the
+				// list without a word.
+				switch {
+				case strings.TrimSpace(it.Repo) != "":
+					if _, _, err := github.SplitOwnerRepo(it.Repo); err != nil {
+						return fmt.Errorf("lists[%d].categories[%d].items[%d].repo: %w", idx, ci, ii, err)
+					}
+				case strings.TrimSpace(it.URL) != "":
+				default:
 					return fmt.Errorf("lists[%d].categories[%d].items[%d]: repo: or url: is required", idx, ci, ii)
 				}
 			default:

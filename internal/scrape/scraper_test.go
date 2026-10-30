@@ -178,3 +178,55 @@ func TestListReposRejectsOversizedPage(t *testing.T) {
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "larger than")
 }
+
+// TestListReposKeepsRepositoriesWhoseOwnerIsAPageName makes sure a
+// repository is not discarded because its owner has the same name as one of
+// the pages of GitHub.
+//
+// The exclusions for the navigation links are only applied to the fallback
+// scan. The rows of the list are the entries of the list, so a repository
+// that is listed there is a repository.
+func TestListReposKeepsRepositoriesWhoseOwnerIsAPageName(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write([]byte(
+			`<div class="Box-row"><a href="/education/autograding-command-grader">grader</a></div>` +
+				`<div class="Box-row"><a href="/features/awesome-actions">actions</a></div>`,
+		))
+	}))
+	defer srv.Close()
+
+	sc := scrape.NewScraper(stdr.New(nil))
+	sc.BaseURL = srv.URL
+
+	out, err := sc.ListRepos(context.Background(), "owner", "list")
+	require.NoError(t, err)
+	require.Equal(t, []string{
+		"education/autograding-command-grader",
+		"features/awesome-actions",
+	}, out)
+}
+
+// TestListReposFallbackScanRejectsNavigationLinks makes sure the fallback
+// anchor scan - the one that is used when the markup of the rows changes -
+// still rejects the links to the pages of GitHub.
+func TestListReposFallbackScanRejectsNavigationLinks(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		// There is no row in this page, so the scraper falls back to the
+		// general anchor scan.
+		_, _ = w.Write([]byte(
+			`<a href="/settings/profile">Settings</a>` +
+				`<a href="/collections/some-collection">Collections</a>` +
+				`<a href="/owner/repo">Repo</a>`,
+		))
+	}))
+	defer srv.Close()
+
+	sc := scrape.NewScraper(stdr.New(nil))
+	sc.BaseURL = srv.URL
+
+	out, err := sc.ListRepos(context.Background(), "owner", "list")
+	require.NoError(t, err)
+	require.Equal(t, []string{"owner/repo"}, out)
+}

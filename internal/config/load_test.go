@@ -292,6 +292,11 @@ func TestLoadRejectsInvalidItems(t *testing.T) {
 			body: "version: 1\nuser: d\nlists:\n  - slug: s\n    title: T\n    categories:\n      - name: C\n        items:\n          - type: github\n            repo: owner/../other\n",
 			want: "repo: invalid owner/repo format",
 		},
+		{
+			name: "item without a type and with a malformed repository",
+			body: "version: 1\nuser: d\nlists:\n  - slug: s\n    title: T\n    categories:\n      - name: C\n        items:\n          - repo: not-a-repository\n",
+			want: "repo: invalid owner/repo format",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
