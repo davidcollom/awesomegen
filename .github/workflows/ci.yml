@@ -35,8 +35,48 @@ env:
   # Lowest Go version the module supports. Keep in sync with the `go`
   # directive in go.mod.
   GO_MIN_VERSION: '1.26.x'
+  # Check the sources out with the line endings they are stored with.
+  #
+  # Git on Windows rewrites the line endings of every file it checks out,
+  # so the working tree would differ from the repository. The formatting
+  # check would then report the whole repository as unformatted, and the
+  # binaries that are built from it would not be the same on every
+  # platform. The setting is passed through the environment, so that it
+  # applies to the checkout itself and not only to the later steps.
+  GIT_CONFIG_COUNT: '1'
+  GIT_CONFIG_KEY_0: core.autocrlf
+  GIT_CONFIG_VALUE_0: 'false'
 
 jobs:
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ env.GO_MIN_VERSION }}
+          check-latest: true
+
+      - name: gofmt
+        run: |
+          set -euo pipefail
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "::error::The following files are not gofmt'ed:"
+            echo "$unformatted"
+            echo "::error::Run 'make fmt' to fix them."
+            exit 1
+          fi
+
+      - name: go vet
+        run: go vet ./...
+
   test:
     name: test (${{ matrix.go }}, ${{ matrix.os }})
     runs-on: ${{ matrix.os }}
@@ -65,20 +105,6 @@ jobs:
         with:
           go-version: ${{ matrix.go }}
           check-latest: true
-
-      - name: gofmt
-        run: |
-          set -euo pipefail
-          unformatted="$(gofmt -l .)"
-          if [ -n "$unformatted" ]; then
-            echo "::error::The following files are not gofmt'ed:"
-            echo "$unformatted"
-            echo "::error::Run 'make fmt' to fix them."
-            exit 1
-          fi
-
-      - name: go vet
-        run: go vet ./...
 
       # The race detector needs cgo and a C compiler. GitHub's Linux and
       # macOS images ship one; the Windows image does not guarantee a
