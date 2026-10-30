@@ -67,6 +67,10 @@ jobs:
       - name: Install syft
         # GoReleaser shells out to syft to produce the SBOMs. The download is
         # pinned to a version and verified against the published checksum.
+        #
+        # The binary is installed into the home directory of the runner: a
+        # hosted runner does not run the job as root, so /usr/local/bin is
+        # not writable.
         run: |
           set -euo pipefail
           url="https://github.com/anchore/syft/releases/download/v${SYFT_VERSION}/syft_${SYFT_VERSION}_linux_amd64.tar.gz"
@@ -78,7 +82,12 @@ jobs:
             echo "::error::Checksum mismatch for syft: expected ${SYFT_SHA256}, got ${actual}"
             exit 1
           fi
-          tar -xzf /tmp/syft.tar.gz -C /usr/local/bin syft
+          bindir="${HOME}/.local/bin"
+          mkdir -p "${bindir}"
+          tar -xzf /tmp/syft.tar.gz -C "${bindir}" syft
+          chmod +x "${bindir}/syft"
+          # The directory is added to the PATH of the steps that follow.
+          echo "${bindir}" >> "${GITHUB_PATH}"
           syft version
 
       - name: Set up Docker Buildx
