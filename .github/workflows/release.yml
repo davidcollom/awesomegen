@@ -205,7 +205,9 @@ jobs:
 
   sign:
     name: sign and attest
-    needs: goreleaser
+    # The aggregate SBOM is signed here, so the job waits for the SBOM to
+    # exist.
+    needs: [goreleaser, sbom]
     runs-on: ubuntu-latest
     permissions:
       # Keyless cosign signing and the GitHub attestation both authenticate
@@ -225,6 +227,14 @@ jobs:
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: release-artifacts
+          path: dist
+
+      - name: Download the aggregate SBOM
+        # The SBOM of the whole source tree is an artefact of the release as
+        # well, so it is signed and attested like the archives.
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: sbom.spdx.json
           path: dist
 
       - name: Install cosign
@@ -254,7 +264,14 @@ jobs:
           # Sign the checksum manifest as well: verifying this single
           # signature transitively covers every archive listed in it.
           cosign sign-blob --yes --bundle dist/checksums.txt.sigstore.json dist/checksums.txt
-          echo "Signed ${signed} archive(s) and checksums.txt"
+          # The aggregate SBOM is an artefact of the release as well, so it
+          # is signed too: an SBOM that cannot be verified is of little use.
+          if [ ! -f dist/sbom.spdx.json ]; then
+            echo "::error::The aggregate SBOM was not found in dist/"
+            exit 1
+          fi
+          cosign sign-blob --yes --bundle dist/sbom.spdx.json.sigstore.json dist/sbom.spdx.json
+          echo "Signed ${signed} archive(s), checksums.txt and the aggregate SBOM"
 
       - name: Attach the signatures to the release
         env:
@@ -275,6 +292,14 @@ jobs:
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-checksums: dist/checksums.txt
+          show-summary: true
+
+      - name: Attest the aggregate SBOM
+        # The aggregate SBOM is attested on its own: it is not listed in the
+        # checksum file, because it is built after the release artefacts.
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: dist/sbom.spdx.json
           show-summary: true
 
   publish:
