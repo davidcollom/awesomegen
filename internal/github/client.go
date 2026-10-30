@@ -62,6 +62,12 @@ func SplitOwnerRepo(ownerRepo string) (string, string, error) {
 	if strings.Contains(repo, "/") {
 		return "", "", fmt.Errorf("invalid owner/repo format %q", ownerRepo)
 	}
+	// "." and ".." pass the character allowlist but are path segments, not
+	// names: go-github does not escape them, so "owner/.." would resolve to
+	// the endpoint of the parent collection instead of a repository.
+	if owner == "." || owner == ".." || repo == "." || repo == ".." {
+		return "", "", fmt.Errorf("invalid owner/repo format %q", ownerRepo)
+	}
 	if !ownerPattern.MatchString(owner) || !repoPattern.MatchString(repo) {
 		return "", "", fmt.Errorf("invalid owner/repo format %q", ownerRepo)
 	}

@@ -37,6 +37,7 @@ func TestMarkdownVariants(t *testing.T) {
 		name     string
 		list     config.List
 		contains []string
+		wantErr  error
 	}{
 		{
 			name: "FlatUnGrouped",
@@ -186,17 +187,17 @@ func TestMarkdownVariants(t *testing.T) {
 				GroupByTopic: false,
 				Categories:   []*config.Category{},
 			},
-			contains: []string{
-				"# Empty List",
-				// "## Repositories",
-				FooterStr,
-			},
+			wantErr: ErrNoEntries,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			md, err := Markdown(tt.list)
+			if tt.wantErr != nil {
+				require.ErrorIs(t, err, tt.wantErr)
+				return
+			}
 			require.NoError(t, err)
 			// t.Cleanup(func() {
 			// 	if testing.Verbose() && t.Failed() {
@@ -212,4 +213,102 @@ func TestMarkdownVariants(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestMarkdownRejectsListWithoutEntries makes sure a list that renders
+// without a single entry is rejected instead of producing a README that
+// would empty an existing list.
+func TestMarkdownRejectsListWithoutEntries(t *testing.T) {
+	starsFormatCompact := config.StarsFormatCompact
+	topicGroupingFlat := config.TopicGroupingModeFlat
+
+	t.Run("no categories", func(t *testing.T) {
+		_, err := Markdown(config.List{Title: "Empty List"})
+		require.ErrorIs(t, err, ErrNoEntries)
+	})
+
+	t.Run("items without metadata", func(t *testing.T) {
+		_, err := Markdown(config.List{
+			Title:             "Link List",
+			StarsFormat:       &starsFormatCompact,
+			TopicGroupingMode: &topicGroupingFlat,
+			Categories: []*config.Category{{Name: "Repositories", Items: []*config.Item{
+				{Type: config.ItemLink, URL: "https://example.com"},
+			}}},
+		})
+		require.ErrorIs(t, err, ErrNoEntries)
+	})
+
+	t.Run("no topic passes the threshold", func(t *testing.T) {
+
+		_, err := Markdown(config.List{
+			Title:             "Grouped",
+			GroupByTopic:      true,
+			TopicGroupingMode: &topicGroupingFlat,
+			MinTagCount:       5,
+			Categories: []*config.Category{{Name: "Repositories", Items: []*config.Item{
+				{GHMeta: &github.RepoMeta{
+					FullName: "repo/one",
+					URL:      "https://github.com/repo/one",
+					Topics:   []string{"AI"},
+				}},
+			}}},
+		})
+		require.ErrorIs(t, err, ErrNoEntries)
+	})
+}
+
+// TestMarkdownAllocatesAnchorsAcrossTheDocument makes sure the anchors are
+// numbered across the whole document: GitHub assigns them to every heading,
+// including the title and the table of contents.
+func TestMarkdownAllocatesAnchorsAcrossTheDocument(t *testing.T) {
+	topicGroupingFlat := config.TopicGroupingModeFlat
+	md, err := Markdown(config.List{
+		Title:             "AI",
+		GroupByTopic:      true,
+		TopicGroupingMode: &topicGroupingFlat,
+		TopicFallback:     "Misc",
+		Categories: []*config.Category{{Name: "Repositories", Items: []*config.Item{
+			{GHMeta: &github.RepoMeta{
+				FullName: "repo/one",
+				URL:      "https://github.com/repo/one",
+				Topics:   []string{"ai"},
+			}},
+		}}},
+	})
+	require.NoError(t, err)
+
+	// The title "AI" takes the anchor "#ai", so the topic has to be
+	// numbered: "#ai-1".
+	require.Contains(t, md, "- [Ai](#ai-1)")
+	require.Contains(t, md, "### Ai")
+}
+
+// TestMarkdownSanitizesSectionHeadings makes sure a topic name cannot inject
+// Markdown into the headings or the table of contents.
+func TestMarkdownSanitizesSectionHeadings(t *testing.T) {
+	topicGroupingFlat := config.TopicGroupingModeFlat
+	md, err := Markdown(config.List{
+		Title:             "Headings",
+		GroupByTopic:      true,
+		TopicGroupingMode: &topicGroupingFlat,
+		TopicFallback:     "Misc",
+		TagAliases:        map[string]string{"evil": "[click](https://evil.example/pwn)"},
+		Categories: []*config.Category{{Name: "Repositories", Items: []*config.Item{
+			{GHMeta: &github.RepoMeta{
+				FullName: "repo/one",
+				URL:      "https://github.com/repo/one",
+				Topics:   []string{"evil"},
+			}},
+		}}},
+	})
+	require.NoError(t, err)
+
+	// The heading text is escaped, so it can no longer act as a link.
+	require.NotContains(t, md, "](https://evil.example/pwn)")
+	require.NotContains(t, md, "](Https://Evil.example/Pwn)")
+	require.Contains(t, md, `\[`)
+	// The anchor is derived from the plain text of the heading, so it is
+	// the same as the anchor GitHub would generate for it.
+	require.Contains(t, md, "](#clickhttpsevilexamplepwn)")
 }

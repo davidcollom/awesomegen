@@ -1,6 +1,7 @@
 package render
 
 import (
+	"errors"
 	"fmt"
 	"maps"
 	"slices"
@@ -16,22 +17,46 @@ const (
 	TOCHeader = "Table of Contents"
 )
 
-// sectionHeading is a resolved section: the text that is rendered and the
-// anchor GitHub will generate for it.
-type sectionHeading struct {
+// ErrNoEntries is returned when a list renders without a single entry.
+//
+// A README without entries is never useful, and writing one over an existing
+// file empties a curated list, so the renderer refuses to produce one.
+var ErrNoEntries = errors.New("no entries to render")
+
+// section is a heading of the generated document together with the entries
+// that belong to it.
+type section struct {
+	level int
+	plain string
+	items []*config.Item
+	subs  []*section
+
+	// hideTitle suppresses the heading itself, which is used for the
+	// fallback group of a nested topic grouping when it is the only one.
+	hideTitle bool
+
+	// title and anchor are resolved once the whole document has been
+	// planned, so the table of contents and the headings always agree.
 	title  string
 	anchor string
 }
 
-// Markdown renders a list into Awesome-style Markdown. It returns an error
-// rather than silently producing an empty document, so callers can avoid
-// overwriting an existing README with nothing.
+// Markdown renders a list into Awesome-style Markdown.
+//
+// It returns an error rather than silently producing an empty document, so
+// callers cannot overwrite an existing README with nothing.
 func Markdown(list config.List) (string, error) {
 	var buf strings.Builder
 	doc := md.NewMarkdown(&buf)
 
+	// GitHub assigns an anchor to every heading and numbers the duplicates
+	// across the whole document, so the anchors are allocated in the order
+	// the headings appear.
+	anchors := newAnchorSet()
+
 	// Header
 	doc.H1(sanitizeText(list.Title)).LF()
+	anchors.unique(plainText(list.Title))
 	if len(list.Badges) > 0 {
 		for _, u := range list.Badges {
 			if safe := sanitizeURL(u); safe != "" {
@@ -44,10 +69,24 @@ func Markdown(list config.List) (string, error) {
 		doc.Blockquote(sanitizeText(list.Tagline)).LF()
 	}
 
-	if list.GroupByTopic {
-		writeByTopTags(doc, list)
-	} else {
-		writeFlatByTopic(doc, list)
+	// The table of contents is a heading itself and comes before the
+	// sections it links to.
+	anchors.unique(TOCHeader)
+
+	sections := buildSections(list)
+	resolveSections(sections, anchors)
+
+	emitted := 0
+	if len(sections) > 0 {
+		doc.H2(TOCHeader).LF()
+		for _, s := range sections {
+			doc.PlainTextf("- [%s](#%s)", s.title, s.anchor)
+		}
+		doc.LF()
+		emitted = writeSections(doc, sections, list)
+	}
+	if emitted == 0 {
+		return "", fmt.Errorf("%w: list %q", ErrNoEntries, list.Title)
 	}
 
 	doc.HorizontalRule()
@@ -60,29 +99,32 @@ func Markdown(list config.List) (string, error) {
 	return buf.String(), nil
 }
 
-// section headings are resolved up front so the table of contents and the
-// rendered sections always agree, including the de-duplication GitHub applies
-// to repeated headings.
-func sectionHeadings(keys []string, locale string) []sectionHeading {
-	anchors := newAnchorSet()
-	out := make([]sectionHeading, 0, len(keys))
-	for _, k := range keys {
-		title := TitlecaseKeys(k, locale)
-		out = append(out, sectionHeading{title: title, anchor: anchors.unique(title)})
-	}
-	return out
-}
-
-func writeByTopTags(doc *md.Markdown, list config.List) {
+// buildSections turns the list into the tree of sections that is rendered.
+func buildSections(list config.List) []*section {
 	var items []*config.Item
 	for _, c := range list.Categories {
-		items = append(items, c.Items...)
+		if c == nil {
+			continue
+		}
+		for _, it := range c.Items {
+			if it == nil {
+				continue
+			}
+			items = append(items, it)
+		}
 	}
 
+	if list.GroupByTopic {
+		return topicSections(list, items)
+	}
+	return flatSections(list, items)
+}
+
+// topicSections groups the entries by GitHub topic.
+func topicSections(list config.List, items []*config.Item) []*section {
 	ranked := rankTopTags(items, list.TagAliases, list.MinTagCount, list.TopTagsLimit)
 	if len(ranked) == 0 {
-		doc.PlainText("_No topics found._")
-		return
+		return nil
 	}
 
 	if list.TopicGroupingMode != nil && *list.TopicGroupingMode == config.TopicGroupingModeNested {
@@ -98,30 +140,23 @@ func writeByTopTags(doc *md.Markdown, list config.List) {
 			nested[p][s] = append(nested[p][s], it)
 		}
 
-		prim := mapsSortedKeysNested(nested)
-		primHeadings := sectionHeadings(prim, list.Locale)
-
-		// TOC
-		doc.H2(TOCHeader).LF()
-		for _, h := range primHeadings {
-			doc.PlainTextf("- [%s](#%s)", h.title, h.anchor)
-		}
-		doc.LF()
-
-		for i, pk := range prim {
-			doc.H3(primHeadings[i].title).LF()
+		var out []*section
+		for _, pk := range mapsSortedKeys(nested) {
 			sec := nested[pk]
-			sk := mapsSortedKeys(sec)
-			secHeadings := sectionHeadings(sk, list.Locale)
-			for j, s := range sk {
-				if s != list.TopicFallback || len(sec) > 1 {
-					doc.H4(secHeadings[j].title).LF()
-				}
-				writeRepoLines(doc, sec[s], list)
-				doc.LF()
+			primary := &section{level: 3, plain: TitlecaseKeys(pk, list.Locale)}
+			for _, sk := range mapsSortedKeys(sec) {
+				primary.subs = append(primary.subs, &section{
+					level: 4,
+					plain: TitlecaseKeys(sk, list.Locale),
+					items: sec[sk],
+					// The fallback group does not get a heading of its
+					// own when it is the only group of the section.
+					hideTitle: sk == list.TopicFallback && len(sec) == 1,
+				})
 			}
+			out = append(out, primary)
 		}
-		return
+		return out
 	}
 
 	// flat mode
@@ -134,56 +169,73 @@ func writeByTopTags(doc *md.Markdown, list config.List) {
 		groups[p] = append(groups[p], it)
 	}
 
-	keys := mapsSortedKeys(groups)
-	headings := sectionHeadings(keys, list.Locale)
-
-	doc.H2(TOCHeader).LF()
-	for _, h := range headings {
-		doc.PlainTextf("- [%s](#%s)", h.title, h.anchor)
+	var out []*section
+	for _, k := range mapsSortedKeys(groups) {
+		out = append(out, &section{level: 3, plain: TitlecaseKeys(k, list.Locale), items: groups[k]})
 	}
-	doc.LF()
+	return out
+}
 
-	for i, k := range keys {
-		doc.H3(headings[i].title).LF()
-		writeRepoLines(doc, groups[k], list)
-		doc.LF()
+// flatSections lists the entries under the topic of each repository.
+func flatSections(list config.List, items []*config.Item) []*section {
+	groups := map[string][]*config.Item{}
+	for _, it := range items {
+		if it == nil || it.GHMeta == nil {
+			continue
+		}
+		t := list.TopicFallback
+		if len(it.GHMeta.Topics) > 0 && it.GHMeta.Topics[0] != "" {
+			t = it.GHMeta.Topics[0]
+		}
+		groups[t] = append(groups[t], it)
+	}
+
+	var out []*section
+	for _, k := range mapsSortedKeys(groups) {
+		out = append(out, &section{level: 3, plain: TitlecaseKeys(k, list.Locale), items: groups[k]})
+	}
+	return out
+}
+
+// resolveSections allocates the anchor of every heading in the order the
+// headings appear in the document and records the text that is rendered.
+//
+// The displayed text is sanitized, but the anchor is derived from the plain
+// text: GitHub derives it from the text a reader sees, not from the
+// Markdown source.
+func resolveSections(sections []*section, anchors *anchorSet) {
+	for _, s := range sections {
+		s.plain = plainText(s.plain)
+		s.title = markdownEscaper.Replace(s.plain)
+		s.anchor = anchors.unique(s.plain)
+		resolveSections(s.subs, anchors)
 	}
 }
 
-func writeFlatByTopic(doc *md.Markdown, list config.List) {
-	groups := map[string][]*config.Item{}
-	for _, c := range list.Categories {
-		for _, it := range c.Items {
-			if it.GHMeta == nil {
-				continue
+// writeSections renders the sections and returns the number of entries that
+// were actually written.
+func writeSections(doc *md.Markdown, sections []*section, list config.List) int {
+	emitted := 0
+	for _, s := range sections {
+		if !s.hideTitle {
+			doc.H3(s.title).LF()
+		}
+		emitted += writeRepoLines(doc, s.items, list)
+		doc.LF()
+		for _, sub := range s.subs {
+			if !sub.hideTitle {
+				doc.H4(sub.title).LF()
 			}
-			t := list.TopicFallback
-			if len(it.GHMeta.Topics) > 0 && it.GHMeta.Topics[0] != "" {
-				t = it.GHMeta.Topics[0]
-			}
-			groups[t] = append(groups[t], it)
+			emitted += writeRepoLines(doc, sub.items, list)
+			doc.LF()
 		}
 	}
-
-	keys := mapsSortedKeys(groups)
-	headings := sectionHeadings(keys, list.Locale)
-
-	// TOC
-	doc.H2(TOCHeader).LF()
-	for _, h := range headings {
-		doc.PlainTextf("- [%s](#%s)", h.title, h.anchor)
-	}
-	doc.LF()
-
-	// Sections
-	for i, k := range keys {
-		doc.H3(headings[i].title).LF()
-		writeRepoLines(doc, groups[k], list)
-		doc.LF()
-	}
+	return emitted
 }
 
-func writeRepoLines(doc *md.Markdown, items []*config.Item, list config.List) {
+// writeRepoLines renders one list item per repository and returns the number
+// of items that were written.
+func writeRepoLines(doc *md.Markdown, items []*config.Item, list config.List) int {
 	// keep sort stable & readable
 	slices.SortFunc(items, func(a, b *config.Item) int {
 		var ak, bk string
@@ -202,6 +254,7 @@ func writeRepoLines(doc *md.Markdown, items []*config.Item, list config.List) {
 			return 0
 		}
 	})
+	emitted := 0
 	for _, it := range items {
 		m := it.GHMeta
 		if m == nil {
@@ -235,16 +288,12 @@ func writeRepoLines(doc *md.Markdown, items []*config.Item, list config.List) {
 		desc := sanitizeText(m.Description)
 		doc.PlainTextf("- [%s](%s)%s%s — %s%s",
 			sanitizeText(m.FullName), url, starPart, license, desc, note)
+		emitted++
 	}
+	return emitted
 }
 
 func mapsSortedKeys[T any](m map[string]T) []string {
-	keys := slices.Collect(maps.Keys(m))
-	slices.Sort(keys)
-	return keys
-}
-
-func mapsSortedKeysNested(m map[string]map[string][]*config.Item) []string {
 	keys := slices.Collect(maps.Keys(m))
 	slices.Sort(keys)
 	return keys

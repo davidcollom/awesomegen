@@ -37,6 +37,12 @@ func TestSplitOwnerRepo(t *testing.T) {
 		"own er/repo",
 		"owner/re po",
 		"owner/repo\n",
+		// "." and ".." pass the character allowlist but are path segments:
+		// "owner/.." resolves to the endpoint of the parent collection.
+		"owner/..",
+		"owner/.",
+		"./repo",
+		"../repo",
 	}
 	for _, in := range invalid {
 		_, _, err := github.SplitOwnerRepo(in)

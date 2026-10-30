@@ -50,6 +50,10 @@ func TestAnchorMatchesGitHub(t *testing.T) {
 		{"CI/CD", "cicd"},
 		{"  Trimmed  ", "trimmed"},
 		{"", ""},
+		// GitHub keeps leading and trailing hyphens: it only removes
+		// punctuation and replaces whitespace.
+		{"Node-", "node-"},
+		{"-Node", "-node"},
 	}
 	for _, tt := range tests {
 		require.Equal(t, tt.want, Anchor(tt.in), tt.in)
@@ -62,4 +66,17 @@ func TestAnchorSetDeduplicates(t *testing.T) {
 	require.Equal(t, "ai-1", set.unique("ai"))
 	require.Equal(t, "ai-2", set.unique("Ai"))
 	require.Equal(t, "web", set.unique("Web"))
+}
+
+// TestAnchorSetReservesGeneratedAnchors makes sure that an anchor that was
+// generated for a repeated heading cannot be claimed by a later heading that
+// happens to have the same name.
+func TestAnchorSetReservesGeneratedAnchors(t *testing.T) {
+	set := newAnchorSet()
+	require.Equal(t, "ai", set.unique("AI"))
+	require.Equal(t, "ai-1", set.unique("AI!"))
+	// "ai-1" was already generated for the second "AI" heading, so this
+	// heading has to be numbered further.
+	require.Equal(t, "ai-1-1", set.unique("ai-1"))
+	require.Equal(t, "ai-2", set.unique("AI"))
 }

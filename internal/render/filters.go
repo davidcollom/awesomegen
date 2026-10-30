@@ -60,6 +60,13 @@ func (e Enricher) EnrichAndFilter(ctx context.Context, list config.List) (config
 				total++
 				meta, err := e.GH.GetRepo(ctx, it.Repo)
 				if err != nil {
+					// A canceled run is not a per-repository failure: the
+					// remaining lookups would fail for the same reason.
+					// Report it as a fatal error so a partial list is
+					// never written as if it were complete.
+					if ctxErr := ctx.Err(); ctxErr != nil {
+						return out, ctxErr
+					}
 					e.Log.Error(err, "github lookup failed", "repo", it.Repo)
 					failures++
 					lastErr = err
@@ -94,9 +101,12 @@ func (e Enricher) EnrichAndFilter(ctx context.Context, list config.List) (config
 // stale reports whether a repository has not been pushed to within the given
 // number of calendar months. A months value of zero or less disables the
 // check.
+//
+// The months are added as months and not as years: AddDate takes the years,
+// the months and the days, in that order.
 func stale(pushed, now time.Time, months int) bool {
 	if months <= 0 {
 		return false
 	}
-	return now.After(pushed.AddDate(months, 0, 0))
+	return now.After(pushed.AddDate(0, months, 0))
 }

@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 
 	"github.com/go-logr/stdr"
@@ -41,6 +42,13 @@ func main() {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 			cfg, err := config.Load(cfgPath)
+			if err != nil {
+				return err
+			}
+
+			// Every output path is resolved relative to the directory that
+			// holds the configuration file.
+			root, err := configRoot(cfgPath)
 			if err != nil {
 				return err
 			}
@@ -96,19 +104,17 @@ func main() {
 				// 3) render markdown
 				md, err := render.Markdown(enriched)
 				if err != nil {
+					// A failing API lookup or an expired token silently
+					// drops every repository, and committing that empty
+					// result would wipe out a curated list.
+					if errors.Is(err, render.ErrNoEntries) {
+						return fmt.Errorf("list %q produced no entries; refusing to overwrite %s with an empty README", list.Slug, outputs[i])
+					}
 					return err
 				}
 
-				// Refuse to replace an existing README with an empty one.
-				// A failing API lookup or an expired token silently drops
-				// every repository, and committing that empty result would
-				// wipe out a curated list.
-				if countItems(enriched) == 0 {
-					return fmt.Errorf("list %q produced no entries; refusing to overwrite %s with an empty README", list.Slug, outputs[i])
-				}
-
 				out := outputs[i]
-				if err := writeFileAtomic(out, []byte(md)); err != nil {
+				if err := writeFileAtomic(root, out, []byte(md)); err != nil {
 					return err
 				}
 				log.Info("wrote README", "file", out, "title", list.Title)
@@ -123,23 +129,18 @@ func main() {
 	}
 }
 
-// countItems returns the number of items across every category of a list.
-func countItems(l config.List) int {
-	n := 0
-	for _, c := range l.Categories {
-		if c == nil {
-			continue
-		}
-		n += len(c.Items)
-	}
-	return n
+// configRoot returns the directory that holds the configuration file. Every
+// output path is resolved relative to it, so the result does not depend on
+// the working directory.
+func configRoot(cfgPath string) (string, error) {
+	return filepath.Abs(filepath.Dir(cfgPath))
 }
 
 // resolveOutputs determines the output path for every list. Relative paths
 // are resolved against the directory holding the config file so the result
 // does not depend on the working directory.
 func resolveOutputs(cfg config.Config, cfgPath string) ([]string, error) {
-	base, err := filepath.Abs(filepath.Dir(cfgPath))
+	base, err := configRoot(cfgPath)
 	if err != nil {
 		return nil, err
 	}
@@ -184,7 +185,22 @@ func resolveOutputs(cfg config.Config, cfgPath string) ([]string, error) {
 // writeFileAtomic writes to a temporary file in the destination directory and
 // renames it into place, so an interrupted or failed run never leaves a
 // half-written README behind.
-func writeFileAtomic(path string, data []byte) error {
+//
+// The destination has to stay inside root. A symbolic link in the path would
+// otherwise redirect the write - and the temporary file that is renamed over
+// it - outside of the directory the configuration lives in.
+func writeFileAtomic(root, path string, data []byte) error {
+	rel, err := filepath.Rel(root, path)
+	if err != nil {
+		return fmt.Errorf("resolve %s against %s: %w", path, root, err)
+	}
+	if rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return fmt.Errorf("%s is outside of %s", path, root)
+	}
+	if err := rejectSymlinks(root, rel); err != nil {
+		return err
+	}
+
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("create output directory %s: %w", dir, err)
@@ -210,6 +226,35 @@ func writeFileAtomic(path string, data []byte) error {
 	}
 	if err := os.Rename(tmpName, path); err != nil {
 		return fmt.Errorf("rename %s to %s: %w", tmpName, path, err)
+	}
+	return nil
+}
+
+// rejectSymlinks verifies that none of the path components below root is a
+// symbolic link.
+//
+// Lexical path validation does not stop a write from following a symlink: a
+// directory such as "docs" that points outside of the configuration
+// directory would move the generated file out of the allowed root.
+func rejectSymlinks(root, rel string) error {
+	cur := root
+	for _, seg := range strings.Split(filepath.ToSlash(rel), "/") {
+		if seg == "" || seg == "." {
+			continue
+		}
+		cur = filepath.Join(cur, seg)
+		fi, err := os.Lstat(cur)
+		if err != nil {
+			if os.IsNotExist(err) {
+				// The component does not exist yet, so it is not a
+				// symlink and nothing below it can be one either.
+				return nil
+			}
+			return fmt.Errorf("inspect %s: %w", cur, err)
+		}
+		if fi.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("%s is a symbolic link; refusing to write through it", cur)
+		}
 	}
 	return nil
 }

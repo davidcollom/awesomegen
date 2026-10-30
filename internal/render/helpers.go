@@ -70,13 +70,20 @@ var markdownEscaper = strings.NewReplacer(
 	`>`, `\>`,
 )
 
+// plainText removes HTML tags and collapses whitespace so that a
+// description cannot break out of its list item. Unlike sanitizeText it
+// leaves Markdown metacharacters alone: the result is the text a reader
+// sees, and therefore the text GitHub derives a heading anchor from.
+func plainText(s string) string {
+	s = htmlTagPattern.ReplaceAllString(s, "")
+	return strings.Join(strings.Fields(s), " ")
+}
+
 // sanitizeText makes untrusted text safe to embed in generated Markdown.
 // It removes HTML tags, collapses whitespace (so a description cannot break
 // out of its list item) and escapes Markdown metacharacters.
 func sanitizeText(s string) string {
-	s = htmlTagPattern.ReplaceAllString(s, "")
-	s = strings.Join(strings.Fields(s), " ")
-	return markdownEscaper.Replace(s)
+	return markdownEscaper.Replace(plainText(s))
 }
 
 // sanitizeURL validates that a URL is an absolute http/https URL and escapes
@@ -104,33 +111,60 @@ func sanitizeURL(raw string) string {
 var anchorStripper = regexp.MustCompile(`[^\p{L}\p{N}\p{M} _-]+`)
 
 // Anchor converts a heading into the anchor GitHub generates for it.
+//
+// Leading and trailing hyphens are part of the anchor: GitHub only removes
+// punctuation and replaces whitespace, so the heading "Node-" has the anchor
+// "node-" and not "node".
 func Anchor(heading string) string {
 	s := strings.ToLower(strings.TrimSpace(heading))
 	s = anchorStripper.ReplaceAllString(s, "")
 	s = strings.ReplaceAll(s, " ", "-")
-	return strings.Trim(s, "-")
+	return s
 }
 
 // anchorSet assigns unique anchors to headings, mirroring the way GitHub
 // de-duplicates repeated headings by appending a counter.
+//
+// The anchors it hands out are reserved, so a heading can never claim an
+// anchor that was already generated for a different heading.
 type anchorSet struct {
+	// seen counts how often a base anchor has been requested.
 	seen map[string]int
+	// used holds every anchor that has been handed out.
+	used map[string]struct{}
 }
 
 func newAnchorSet() *anchorSet {
-	return &anchorSet{seen: map[string]int{}}
+	return &anchorSet{
+		seen: map[string]int{},
+		used: map[string]struct{}{},
+	}
 }
 
 // unique returns the anchor for heading, adding a numeric suffix if that
 // anchor has already been used.
+//
+// GitHub counts the repetitions of a heading and appends the counter to the
+// base anchor. A generated anchor is reserved as well, so a later heading
+// whose own anchor is "ai-1" does not take the "ai-1" that was already
+// generated for a second "ai" heading.
 func (a *anchorSet) unique(heading string) string {
 	base := Anchor(heading)
 	n := a.seen[base]
-	a.seen[base] = n + 1
-	if n == 0 {
-		return base
+	candidate := base
+	if n > 0 {
+		candidate = base + "-" + strconv.Itoa(n)
 	}
-	return base + "-" + strconv.Itoa(n)
+	for {
+		if _, taken := a.used[candidate]; !taken {
+			break
+		}
+		n++
+		candidate = base + "-" + strconv.Itoa(n)
+	}
+	a.seen[base] = n + 1
+	a.used[candidate] = struct{}{}
+	return candidate
 }
 
 func sortItems(items []*config.Item) {
