@@ -144,6 +144,13 @@ func (l *List) validate(idx int, configUser string) error {
 	if l.Title == "" {
 		return fmt.Errorf("lists[%d].title: is required", idx)
 	}
+	// A title that holds nothing but spaces is rendered as an empty
+	// heading, so the title is trimmed and rejected when nothing is left.
+	trimmed := strings.TrimSpace(l.Title)
+	if trimmed == "" {
+		return fmt.Errorf("lists[%d].title: must not be blank", idx)
+	}
+	l.Title = trimmed
 	if l.MinStars < 0 {
 		return fmt.Errorf("lists[%d].min_stars: must not be negative", idx)
 	}

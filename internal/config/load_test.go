@@ -108,6 +108,11 @@ func TestLoadRejectsBadValues(t *testing.T) {
 			want: "title: is required",
 		},
 		{
+			name: "blank title",
+			body: "version: 1\nuser: d\nlists:\n  - slug: s\n    title: \"   \"\n",
+			want: "title: must not be blank",
+		},
+		{
 			name: "no sources and no slug",
 			body: "version: 1\nuser: d\nlists:\n  - title: T\n",
 			want: "either sources or {user + slug} must be set",
@@ -187,6 +192,44 @@ func TestLoadRejectsBadValues(t *testing.T) {
 			require.Contains(t, err.Error(), tt.want)
 		})
 	}
+}
+
+// TestLoadTrimsListTitle makes sure the title of a list is trimmed.
+//
+// A title that is written with spaces around it - "  Awesome Tools  " - is
+// rendered as it is, and the heading of the section then carries the spaces
+// as well. The title is trimmed when the configuration is read, so that the
+// heading is the same everywhere.
+func TestLoadTrimsListTitle(t *testing.T) {
+	path := writeConfig(t, `
+version: 1
+user: davidcollom
+lists:
+  - slug: tools
+    title: "  Awesome Tools  "
+`)
+	cfg, err := config.Load(path)
+	require.NoError(t, err)
+	require.Len(t, cfg.Lists, 1)
+	require.Equal(t, "Awesome Tools", cfg.Lists[0].Title)
+}
+
+// TestLoadRejectsBlankListTitle makes sure a title that holds nothing but
+// spaces is rejected.
+//
+// An empty title is rejected, but a title that holds nothing but spaces is
+// not empty, so it was accepted and then rendered as an empty heading.
+func TestLoadRejectsBlankListTitle(t *testing.T) {
+	path := writeConfig(t, `
+version: 1
+user: davidcollom
+lists:
+  - slug: tools
+    title: "   "
+`)
+	_, err := config.Load(path)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "title: must not be blank")
 }
 
 // absoluteOutput returns a path that is absolute on every platform and that
