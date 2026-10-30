@@ -152,8 +152,24 @@ func TestGenerateWritesTheDocument(t *testing.T) {
 
 func TestGenerateRefusesToOverwriteWithAnEmptyREADME(t *testing.T) {
 	// A failing lookup must not empty a curated list.
+	//
+	// The configuration carries a curated link next to the repository that
+	// cannot be loaded: without the guard the remaining document would
+	// still be renderable - with the link alone - and it would replace the
+	// README. The link is what makes the test protect the guard.
 	dir := t.TempDir()
-	cfgPath := writeConfigIn(t, dir, oneListConfig)
+	cfgPath := writeConfigIn(t, dir, `lists:
+  - title: "Tools"
+    sources:
+      - user: davidcollom
+        slug: tools
+    categories:
+      - name: "Documentation"
+        items:
+          - type: link
+            title: "The documentation"
+            url: "https://example.com/docs"
+`)
 
 	existing := filepath.Join(dir, "README.md")
 	require.NoError(t, os.WriteFile(existing, []byte("curated\n"), 0o600))

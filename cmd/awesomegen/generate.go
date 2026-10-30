@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"unicode"
 
 	"github.com/go-logr/logr"
 	"github.com/jonboulle/clockwork"
@@ -215,7 +216,34 @@ func resolveOutputs(cfg config.Config, cfgPath string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
+	policy := outputPolicy{caseInsensitive: caseInsensitiveDir(base)}
+	return resolveOutputsIn(cfg, base, policy)
+}
 
+// outputPolicy describes how the file system that holds the output files
+// compares two paths.
+type outputPolicy struct {
+	// caseInsensitive is true when the file system does not distinguish
+	// names that differ only in case.
+	caseInsensitive bool
+}
+
+// key returns the comparison key of a path.
+//
+// Two paths with the same key name the same file.
+func (p outputPolicy) key(path string) string {
+	if p.caseInsensitive {
+		return strings.ToLower(path)
+	}
+	return path
+}
+
+// resolveOutputsIn determines the output path for every list, relative to
+// the directory that holds the configuration file.
+//
+// The paths are compared with the given policy, so that two outputs that
+// name the same file are refused on every platform.
+func resolveOutputsIn(cfg config.Config, base string, policy outputPolicy) ([]string, error) {
 	out := make([]string, len(cfg.Lists))
 	seen := map[string]int{}
 	for i := range cfg.Lists {
@@ -244,44 +272,79 @@ func resolveOutputs(cfg config.Config, cfgPath string) ([]string, error) {
 			p = filepath.Join(base, rel)
 		}
 		p = filepath.Clean(p)
-		if prev, ok := seen[p]; ok {
+		key := policy.key(p)
+		if prev, ok := seen[key]; ok {
 			return nil, fmt.Errorf("lists[%d] and lists[%d] both write to %s; set a distinct output for each list", prev, i, p)
 		}
-		seen[p] = i
+		seen[key] = i
 		out[i] = p
 	}
 	// A path that is the directory of another path cannot hold both: the
 	// generator would write one of them and then fail on the other one,
 	// because the file is in the way of the directory it needs.
-	for i := range out {
-		for j := range out {
-			if i == j {
-				continue
+	//
+	// The ancestors of a path are looked at instead of comparing every
+	// path with every other one: the number of comparisons then grows with
+	// the depth of the paths and not with the square of the number of
+	// lists, so a configuration with many lists stays cheap to check.
+	for i, p := range out {
+		for dir := filepath.Dir(p); ; dir = filepath.Dir(dir) {
+			if prev, ok := seen[policy.key(dir)]; ok && prev != i {
+				return nil, fmt.Errorf("lists[%d] writes to %s, which is inside %s, the file that lists[%d] writes to; set outputs that do not contain each other", i, out[i], out[prev], prev)
 			}
-			if isBelow(out[j], out[i]) {
-				return nil, fmt.Errorf("lists[%d] writes to %s, which is inside %s, the file that lists[%d] writes to; set outputs that do not contain each other", j, out[j], out[i], i)
+			parent := filepath.Dir(dir)
+			if parent == dir {
+				break
 			}
 		}
 	}
 	return out, nil
 }
 
-// isBelow reports whether path lies inside the directory dir.
+// caseInsensitiveDir reports whether the file system that holds dir
+// distinguishes names that differ only in case.
 //
-// The comparison is done on the cleaned paths, so a path is never reported as
-// being inside itself and a path that only shares a prefix - "docs.md" and
-// "docs.mdx" - is not reported either.
-func isBelow(path, dir string) bool {
-	rel, err := filepath.Rel(dir, path)
+// The probe uses a file that exists: on a file system that ignores the
+// case, a name that differs from it only in case resolves to the same
+// file, and on a file system that does not, the name does not exist.
+//
+// A directory that cannot be read is reported as case-sensitive, which is
+// the safe answer: two outputs that differ only in case are then allowed,
+// exactly as they are on a file system that tells them apart.
+func caseInsensitiveDir(dir string) bool {
+	entries, err := os.ReadDir(dir)
 	if err != nil {
-		// The two paths are on different volumes, so one cannot be inside
-		// the other.
 		return false
 	}
-	if rel == "." || rel == ".." {
+	for _, e := range entries {
+		name := e.Name()
+		variant := swapCase(name)
+		if variant == name {
+			// The name has no letters, so it cannot be told apart from
+			// its variant by the case.
+			continue
+		}
+		if _, err := os.Stat(filepath.Join(dir, variant)); err == nil {
+			return true
+		}
+		// The first file that carries letters decides: on a file system
+		// that ignores the case, its variant exists as well.
 		return false
 	}
-	return !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+	return false
+}
+
+// swapCase returns name with the case of its letters flipped.
+func swapCase(name string) string {
+	return strings.Map(func(r rune) rune {
+		switch {
+		case unicode.IsLower(r):
+			return unicode.ToUpper(r)
+		case unicode.IsUpper(r):
+			return unicode.ToLower(r)
+		}
+		return r
+	}, name)
 }
 
 // writeFileAtomic writes to a temporary file in the destination directory and
