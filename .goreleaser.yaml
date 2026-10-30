@@ -17,7 +17,11 @@ project_name: awesomegen
 
 env:
   - CGO_ENABLED=0
-  - GH_OWNER=davidcollom
+  # The owner of the container registry. The release workflow sets the
+  # variable to the owner of the repository the workflow runs in, so that a
+  # fork publishes its images to its own registry. A local release falls
+  # back to the owner of the upstream repository.
+  - GH_OWNER={{ envOrDefault "GH_OWNER" "davidcollom" }}
   - VERSION="{{ .Version }}"
   - TAG="{{ .Tag }}"
 
@@ -217,3 +221,10 @@ release:
   # this, every artefact that is already attached to the draft makes the
   # upload fail.
   replace_existing_artifacts: true
+  # The commit the tag points at, when the tag does not exist on the server
+  # yet. Without it, the API creates the tag at the head of the default
+  # branch, which is not the commit the artefacts were built from.
+  #
+  # The release workflow pushes the tag before it runs, so the value only
+  # matters for a local rehearsal of the release.
+  target_commitish: "{{ .FullCommit }}"
