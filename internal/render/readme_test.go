@@ -196,7 +196,8 @@ func TestMarkdownVariants(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			md := Markdown(tt.list)
+			md, err := Markdown(tt.list)
+			require.NoError(t, err)
 			// t.Cleanup(func() {
 			// 	if testing.Verbose() && t.Failed() {
 			// 		t.Log("Output:")

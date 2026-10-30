@@ -2,6 +2,7 @@ package render
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -17,16 +18,51 @@ type Enricher struct {
 	Log logr.Logger
 }
 
+// LookupError reports that one or more repository lookups failed. Callers can
+// use errors.As to detect it and decide whether to continue.
+type LookupError struct {
+	Failed int
+	Total  int
+	Err    error
+}
+
+func (e *LookupError) Error() string {
+	return fmt.Sprintf("%d of %d repository lookups failed (last error: %v)", e.Failed, e.Total, e.Err)
+}
+
+func (e *LookupError) Unwrap() error { return e.Err }
+
+// EnrichAndFilter enriches every GitHub item in the list with repository
+// metadata and drops the items that fail the configured filters.
+//
+// Items that cannot be enriched are skipped, and the number of failures is
+// reported as a *LookupError so callers can decide whether a partially
+// enriched list is acceptable.
 func (e Enricher) EnrichAndFilter(ctx context.Context, list config.List) (config.List, error) {
+	if e.Now == nil {
+		e.Now = clockwork.NewRealClock()
+	}
 	out := list
+	var failures int
+	var total int
+	var lastErr error
 	for ci := range out.Categories {
+		if out.Categories[ci] == nil {
+			continue
+		}
 		e.Log.Info("enriching category", "name", out.Categories[ci].Name, "items", len(out.Categories[ci].Items))
 		var items []*config.Item
 		for _, it := range out.Categories[ci].Items {
+			if it == nil {
+				continue
+			}
 			if it.Type == config.ItemGitHub {
+				total++
 				meta, err := e.GH.GetRepo(ctx, it.Repo)
 				if err != nil {
 					e.Log.Error(err, "github lookup failed", "repo", it.Repo)
+					failures++
+					lastErr = err
 					continue
 				}
 				if meta.Archived {
@@ -49,10 +85,18 @@ func (e Enricher) EnrichAndFilter(ctx context.Context, list config.List) (config
 		out.Categories[ci].Items = items
 		e.Log.Info("enriched category", "name", out.Categories[ci].Name, "items", len(out.Categories[ci].Items))
 	}
+	if failures > 0 {
+		return out, &LookupError{Failed: failures, Total: total, Err: lastErr}
+	}
 	return out, nil
 }
 
+// stale reports whether a repository has not been pushed to within the given
+// number of calendar months. A months value of zero or less disables the
+// check.
 func stale(pushed, now time.Time, months int) bool {
-	dm := (now.Year()-pushed.Year())*12 + int(now.Month()-pushed.Month())
-	return dm > months
+	if months <= 0 {
+		return false
+	}
+	return now.After(pushed.AddDate(months, 0, 0))
 }

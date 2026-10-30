@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft-07/schema",
-  "$id": "https://example.com/schemas/awesomegen/config-schema.json",
+  "$id": "https://github.com/davidcollom/awesomegen/blob/main/config-schema.json",
   "$defs": {
     "Category": {
       "properties": {
@@ -14,31 +14,12 @@
           },
           "type": "array",
           "description": "Array of items in this category - Manually set if required"
-        },
-        "version": {
-          "type": "integer",
-          "description": "Configuration version"
-        },
-        "user": {
-          "type": "string",
-          "description": "User identifier"
-        },
-        "lists": {
-          "items": {
-            "$ref": "#/$defs/List"
-          },
-          "type": "array",
-          "description": "Array of lists"
         }
       },
       "additionalProperties": false,
       "type": "object",
       "required": [
-        "name",
-        "items",
-        "version",
-        "user",
-        "lists"
+        "name"
       ]
     },
     "Item": {
@@ -96,11 +77,11 @@
         },
         "tagline": {
           "type": "string",
-          "description": "List tagline"
+          "description": "Short description or tagline"
         },
         "output": {
           "type": "string",
-          "description": "Output path or format"
+          "description": "Output path relative to the config file"
         },
         "min_stars": {
           "type": "integer",
@@ -131,20 +112,20 @@
         },
         "topic_fallback": {
           "type": "string",
-          "description": "Fallback topic name if none found (default: 'misc')",
+          "description": "Fallback topic name if none found (default: misc)",
           "default": "misc"
         },
         "topic_grouping_mode": {
           "$ref": "#/$defs/TopicGroupingMode",
-          "description": "Topic grouping style: 'flat' or 'nested' (default: 'flat')"
+          "description": "Topic grouping style - flat or nested (default: flat)"
         },
         "stars_format": {
           "$ref": "#/$defs/StarsFormat",
-          "description": "Format for displaying stars: 'locale'"
+          "description": "Format for displaying stars - locale or compact or none (default: locale)"
         },
         "locale": {
           "type": "string",
-          "description": "Locale for formatting numbers"
+          "description": "Locale for formatting numbers - BCP-47 (default: en-GB)"
         },
         "group_by_top_tags": {
           "type": "boolean",
@@ -160,7 +141,7 @@
         },
         "single_home": {
           "type": "boolean",
-          "description": "If true"
+          "description": "If true - generate a single home page"
         },
         "tag_aliases": {
           "additionalProperties": {
@@ -173,29 +154,18 @@
       "additionalProperties": false,
       "type": "object",
       "required": [
-        "slug",
-        "sources",
-        "title",
-        "tagline",
-        "group_by_topic",
-        "topic_fallback",
-        "topic_grouping_mode",
-        "stars_format",
-        "locale",
-        "group_by_top_tags",
-        "top_tags_limit",
-        "min_tag_count",
-        "single_home",
-        "tag_aliases"
+        "title"
       ]
     },
     "Source": {
       "properties": {
         "user": {
-          "type": "string"
+          "type": "string",
+          "description": "GitHub username or organization"
         },
         "slug": {
-          "type": "string"
+          "type": "string",
+          "description": "Repository name or slug"
         }
       },
       "additionalProperties": false,
@@ -239,10 +209,8 @@
   "additionalProperties": false,
   "type": "object",
   "required": [
-    "version",
-    "user",
     "lists"
   ],
-  "title": "Config.YAML (Generated: 2025-11-07 16:06:22)",
+  "title": "awesomegen configuration schema",
   "description": "Configuration schema for awesomegen"
 }

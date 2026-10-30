@@ -12,6 +12,12 @@
 *.so
 *.dylib
 
+# Binaries built by `go build ./cmd/awesomegen` (release.yml) and `make build`
+/awesomegen
+/awesomegen.exe
+/bin/
+/dist/
+
 # Test binary, built with `go test -c`
 *.test
 
