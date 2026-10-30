@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -30,6 +31,11 @@ func Load(path string) (Config, error) {
 			}
 			c.Lists[i].Sources = []*Source{{User: c.User, Slug: c.Lists[i].Slug}}
 		}
+		title := strings.TrimSpace(c.Lists[i].Title)
+		if title == "" {
+			return Config{}, fmt.Errorf("lists[%d].title is required", i)
+		}
+		c.Lists[i].Title = title
 		if c.Lists[i].TopicFallback == "" {
 			c.Lists[i].TopicFallback = "misc"
 		}
