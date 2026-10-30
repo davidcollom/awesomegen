@@ -161,6 +161,12 @@ func resolveOutputs(cfg config.Config, cfgPath string) ([]string, error) {
 				rel = l.Slug + ".md"
 			}
 		}
+		// Derived file names are held to the same rules as configured ones:
+		// the slug is user supplied and must not be able to escape the
+		// config directory or target a hidden path.
+		if err := config.ValidateOutputPath(rel); err != nil {
+			return nil, fmt.Errorf("lists[%d]: output %q: %w", i, rel, err)
+		}
 		p := rel
 		if !filepath.IsAbs(p) {
 			p = filepath.Join(base, rel)

@@ -49,3 +49,13 @@ func TestResolveOutputsRequiresOutputForUnnamedLists(t *testing.T) {
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "output is required")
 }
+
+func TestResolveOutputsRejectsUnsafeDerivedPaths(t *testing.T) {
+	// A slug is user supplied and the derived file name must not be able to
+	// escape the config directory or reach a hidden path.
+	for _, slug := range []string{"../../outside", ".git", ".."} {
+		cfg := config.Config{Lists: []config.List{{Slug: slug}, {Slug: "b"}}}
+		_, err := resolveOutputs(cfg, "/data/config.yaml")
+		require.Error(t, err, "slug %q must not produce an output path", slug)
+	}
+}

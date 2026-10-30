@@ -1,6 +1,7 @@
 package scrape
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -100,8 +101,20 @@ func (s *HTMLScraper) ListRepos(ctx context.Context, user, slug string) ([]strin
 			_ = resp.Body.Close()
 			return nil, fmt.Errorf("scrape: %s", resp.Status)
 		}
-		doc, err := goquery.NewDocumentFromReader(io.LimitReader(resp.Body, MaxPageBytes))
+		// Read one byte more than the limit so an oversized body can be
+		// detected. io.LimitReader reports the limit as an ordinary EOF,
+		// which the HTML parser would accept as a complete page - silently
+		// dropping the repositories (and the pagination link) beyond the
+		// cutoff.
+		body, err := io.ReadAll(io.LimitReader(resp.Body, MaxPageBytes+1))
 		_ = resp.Body.Close()
+		if err != nil {
+			return nil, fmt.Errorf("scrape: read page %d: %w", page, err)
+		}
+		if len(body) > MaxPageBytes {
+			return nil, fmt.Errorf("scrape: page %d is larger than the %d byte limit", page, MaxPageBytes)
+		}
+		doc, err := goquery.NewDocumentFromReader(bytes.NewReader(body))
 		if err != nil {
 			return nil, err
 		}

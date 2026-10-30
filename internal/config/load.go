@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"golang.org/x/text/language"
@@ -18,6 +19,11 @@ const MaxConfigBytes = 4 << 20 // 4 MiB
 
 // ConfigVersion is the current configuration schema version.
 const ConfigVersion = 1
+
+// slugPattern restricts a list slug to a conservative character set. The
+// slug identifies the list and may be used to derive an output file name,
+// so it must not be able to carry path syntax.
+var slugPattern = regexp.MustCompile(`^[A-Za-z0-9._-]{1,100}$`)
 
 // allowedOutputExtensions restricts the files awesomegen is allowed to
 // write. Without this an `output` value could target a workflow file or a
@@ -141,16 +147,25 @@ func (l *List) validate(idx int, configUser string) error {
 		}
 	}
 	if l.Output != "" {
-		if err := validateOutputPath(l.Output); err != nil {
+		if err := ValidateOutputPath(l.Output); err != nil {
 			return fmt.Errorf("lists[%d].output: %w", idx, err)
 		}
+	}
+	// The slug identifies the list and is used to derive a file name when no
+	// explicit output is set, so it has to obey the same conservative
+	// character set as a scraped star-list slug.
+	if l.Slug != "" && !slugPattern.MatchString(l.Slug) {
+		return fmt.Errorf("lists[%d].slug: %q must contain only letters, digits, dots, dashes and underscores", idx, l.Slug)
 	}
 	return nil
 }
 
-// validateOutputPath ensures the output path stays inside the directory that
+// ValidateOutputPath ensures an output path stays inside the directory that
 // holds the configuration file and cannot target hidden or executable files.
-func validateOutputPath(out string) error {
+// It is exported so that paths derived at runtime - such as the per-list
+// filename generated from a list slug - are held to the same rules as
+// explicitly configured output paths.
+func ValidateOutputPath(out string) error {
 	if filepath.IsAbs(out) {
 		return fmt.Errorf("must be a relative path")
 	}

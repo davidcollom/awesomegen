@@ -146,6 +146,11 @@ func TestLoadRejectsBadValues(t *testing.T) {
 			body: "version: 1\nuser: d\nlists:\n  - slug: s\n    title: T\n    output: README.sh\n",
 			want: "must use one of the extensions",
 		},
+		{
+			name: "slug containing path syntax",
+			body: "version: 1\nuser: d\nlists:\n  - slug: ../../outside\n    title: T\n",
+			want: "slug:",
+		},
 	}
 
 	for _, tt := range tests {

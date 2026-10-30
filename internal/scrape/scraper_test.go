@@ -128,3 +128,27 @@ func TestListReposServerError(t *testing.T) {
 	_, err := sc.ListRepos(context.Background(), "owner", "list")
 	require.Error(t, err)
 }
+
+func TestListReposRejectsOversizedPage(t *testing.T) {
+	// A body larger than the limit must be reported as an error rather
+	// than parsed as a truncated - and therefore silently incomplete - page.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write([]byte("<html><body>"))
+		chunk := make([]byte, 64*1024)
+		for i := range chunk {
+			chunk[i] = 'a'
+		}
+		for written := 0; written < scrape.MaxPageBytes+(1<<20); written += len(chunk) {
+			_, _ = w.Write(chunk)
+		}
+	}))
+	defer srv.Close()
+
+	sc := scrape.NewScraper(stdr.New(nil))
+	sc.BaseURL = srv.URL
+
+	_, err := sc.ListRepos(context.Background(), "owner", "list")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "larger than")
+}
