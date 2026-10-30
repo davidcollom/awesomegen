@@ -1,6 +1,7 @@
 package render
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/davidcollom/awesomegen/internal/config"
@@ -17,8 +18,15 @@ func TestHumanStarsLocaleGB(t *testing.T) {
 
 func TestHumanStarsCompact(t *testing.T) {
 	require.Equal(t, "4.5k", humanStars(4500, "compact", "en-GB"))
-	require.Equal(t, "12k", humanStars(12_345, "compact", "en-GB"))
+	require.Equal(t, "12.3k", humanStars(12_345, "compact", "en-GB"))
 	require.Equal(t, "1.2M", humanStars(1_234_567, "compact", "en-GB"))
+	// The format is consistent across the whole range: the decimals are
+	// dropped at six figures, not in the middle of the range.
+	require.Equal(t, "10.0k", humanStars(9_999, "compact", "en-GB"))
+	require.Equal(t, "10.0k", humanStars(10_000, "compact", "en-GB"))
+	require.Equal(t, "100k", humanStars(100_000, "compact", "en-GB"))
+	require.Equal(t, "999k", humanStars(999_999, "compact", "en-GB"))
+	require.Equal(t, "999", humanStars(999, "compact", "en-GB"))
 }
 
 func TestGroupingFlat(t *testing.T) {
@@ -37,6 +45,7 @@ func TestMarkdownVariants(t *testing.T) {
 		name     string
 		list     config.List
 		contains []string
+		wantErr  error
 	}{
 		{
 			name: "FlatUnGrouped",
@@ -125,9 +134,12 @@ func TestMarkdownVariants(t *testing.T) {
 				"## Table of Contents",
 				"- [Ai](#ai)",
 				"- [Web](#web)",
-				"## Ai",
+				// The heading is asserted with the line breaks around it,
+				// because "## Ai" is also a substring of "### Ai" and the
+				// level of the heading would not be checked.
+				"\n### Ai\n",
 				"- [repo/alpha](https://github.com/repo/alpha) — ⭐ 100 · MIT — Alpha repo",
-				"## Web",
+				"\n### Web\n",
 				"- [repo/beta](https://github.com/repo/beta) — ⭐ 200 · GPL — Beta repo",
 				FooterStr,
 			},
@@ -171,10 +183,10 @@ func TestMarkdownVariants(t *testing.T) {
 			contains: []string{
 				"## Table of Contents",
 				"- [Data](#data)",
-				"## Data",
-				"### Analysis",
+				"\n### Data\n",
+				"\n#### Analysis\n",
 				"- [repo/one](https://github.com/repo/one) — ⭐ 500 · MIT — Repo One",
-				"### Visualization",
+				"\n#### Visualization\n",
 				"- [repo/two](https://github.com/repo/two) — ⭐ 800 · Apache — Repo Two",
 				FooterStr,
 			},
@@ -186,17 +198,18 @@ func TestMarkdownVariants(t *testing.T) {
 				GroupByTopic: false,
 				Categories:   []*config.Category{},
 			},
-			contains: []string{
-				"# Empty List",
-				// "## Repositories",
-				FooterStr,
-			},
+			wantErr: ErrNoEntries,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			md := Markdown(tt.list)
+			md, err := Markdown(tt.list)
+			if tt.wantErr != nil {
+				require.ErrorIs(t, err, tt.wantErr)
+				return
+			}
+			require.NoError(t, err)
 			// t.Cleanup(func() {
 			// 	if testing.Verbose() && t.Failed() {
 			// 		t.Log("Output:")
@@ -211,4 +224,481 @@ func TestMarkdownVariants(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestMarkdownRejectsListWithoutEntries makes sure a list that renders
+// without a single entry is rejected instead of producing a README that
+// would empty an existing list.
+func TestMarkdownRejectsListWithoutEntries(t *testing.T) {
+	starsFormatCompact := config.StarsFormatCompact
+	topicGroupingFlat := config.TopicGroupingModeFlat
+
+	t.Run("no categories", func(t *testing.T) {
+		_, err := Markdown(config.List{Title: "Empty List"})
+		require.ErrorIs(t, err, ErrNoEntries)
+	})
+
+	t.Run("items without a usable URL", func(t *testing.T) {
+		_, err := Markdown(config.List{
+			Title:             "Link List",
+			StarsFormat:       &starsFormatCompact,
+			TopicGroupingMode: &topicGroupingFlat,
+			Categories: []*config.Category{{Name: "Repositories", Items: []*config.Item{
+				{Type: config.ItemLink, URL: "javascript:alert(1)"},
+			}}},
+		})
+		require.ErrorIs(t, err, ErrNoEntries)
+	})
+
+	t.Run("no topic passes the threshold", func(t *testing.T) {
+		minTagCount := 5
+		md, err := Markdown(config.List{
+			Title:             "Grouped",
+			GroupByTopic:      true,
+			TopicGroupingMode: &topicGroupingFlat,
+			MinTagCount:       &minTagCount,
+			Categories: []*config.Category{{Name: "Repositories", Items: []*config.Item{
+				{GHMeta: &github.RepoMeta{
+					FullName: "repo/one",
+					URL:      "https://github.com/repo/one",
+					Topics:   []string{"AI"},
+				}},
+			}}},
+		})
+		require.NoError(t, err)
+		// The threshold decides how finely the entries are grouped, not
+		// whether they are rendered at all: an entry that matches none of
+		// the ranked topics belongs to the fallback group.
+		require.Contains(t, md, "### Misc")
+		require.Contains(t, md, "https://github.com/repo/one")
+	})
+}
+
+// TestMarkdownRendersLinksWhenGroupedByTopic makes sure a link is rendered
+// when the entries are grouped by topic.
+//
+// A link has no topics, so it cannot be ranked and cannot be assigned to a
+// topic. It belongs to the fallback group, which holds the entries that
+// match none of the ranked topics.
+func TestMarkdownRendersLinksWhenGroupedByTopic(t *testing.T) {
+	topicGroupingFlat := config.TopicGroupingModeFlat
+	topicGroupingNested := config.TopicGroupingModeNested
+
+	for _, mode := range []config.TopicGroupingMode{topicGroupingFlat, topicGroupingNested} {
+		t.Run(string(mode), func(t *testing.T) {
+			md, err := Markdown(config.List{
+				Title:             "Grouped",
+				GroupByTopic:      true,
+				TopicGroupingMode: &mode,
+				Categories: []*config.Category{{Name: "Repositories", Items: []*config.Item{
+					{GHMeta: &github.RepoMeta{
+						FullName: "repo/one",
+						URL:      "https://github.com/repo/one",
+						Topics:   []string{"AI"},
+					}},
+					{Type: config.ItemLink, Title: "The Go Blog", URL: "https://go.dev/blog/"},
+				}}},
+			})
+			require.NoError(t, err)
+			require.Contains(t, md, "- [The Go Blog](https://go.dev/blog/)")
+			require.Contains(t, md, "https://github.com/repo/one")
+		})
+	}
+}
+
+// TestMarkdownRendersLinkOnlyListWhenGroupedByTopic makes sure a list that
+// only holds links is rendered when the entries are grouped by topic. The
+// links have no topics, so no topic can be ranked for them.
+func TestMarkdownRendersLinkOnlyListWhenGroupedByTopic(t *testing.T) {
+	topicGroupingFlat := config.TopicGroupingModeFlat
+	md, err := Markdown(config.List{
+		Title:             "Links Only",
+		GroupByTopic:      true,
+		TopicGroupingMode: &topicGroupingFlat,
+		Categories: []*config.Category{{Name: "Repositories", Items: []*config.Item{
+			{Type: config.ItemLink, Title: "The Go Blog", URL: "https://go.dev/blog/"},
+		}}},
+	})
+	require.NoError(t, err)
+	require.Contains(t, md, "- [The Go Blog](https://go.dev/blog/)")
+}
+
+// TestMarkdownMatchesTagAliasesCaseInsensitively makes sure a topic is
+// aliased no matter how the name of the alias is written.
+//
+// A topic is lowercased before it is looked up in the map, so an alias whose
+// name is not lowercase could never match. The name is normalised, so that
+// the alias is found.
+func TestMarkdownMatchesTagAliasesCaseInsensitively(t *testing.T) {
+	topicGroupingFlat := config.TopicGroupingModeFlat
+	md, err := Markdown(config.List{
+		Title:             "Aliased",
+		GroupByTopic:      true,
+		TopicGroupingMode: &topicGroupingFlat,
+		TagAliases:        map[string]string{"Machine-Learning": "AI"},
+		Categories: []*config.Category{{Name: "Repositories", Items: []*config.Item{
+			{GHMeta: &github.RepoMeta{
+				FullName: "repo/one",
+				URL:      "https://github.com/repo/one",
+				Topics:   []string{"machine-learning"},
+			}},
+		}}},
+	})
+	require.NoError(t, err)
+	// The topic is rendered under its canonical name, not under the name
+	// the alias was written with.
+	require.Contains(t, md, "### Ai")
+	require.NotContains(t, md, "Machine-Learning")
+}
+
+// TestMarkdownRejectsAmbiguousTagAliases makes sure an alias map that names
+// the same alias twice with different targets is reported instead of being
+// resolved by chance.
+func TestMarkdownRejectsAmbiguousTagAliases(t *testing.T) {
+	_, err := Markdown(config.List{
+		Title:      "Ambiguous",
+		TagAliases: map[string]string{"Go": "golang", "go": "gopher"},
+		Categories: []*config.Category{{Name: "Repositories", Items: []*config.Item{
+			{GHMeta: &github.RepoMeta{FullName: "repo/one", URL: "https://github.com/repo/one"}},
+		}}},
+	})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "they point at different tags")
+}
+
+// TestMarkdownAllocatesAnchorsAcrossTheDocument makes sure the anchors are
+// numbered across the whole document: GitHub assigns them to every heading,
+// including the title and the table of contents.
+func TestMarkdownAllocatesAnchorsAcrossTheDocument(t *testing.T) {
+	topicGroupingFlat := config.TopicGroupingModeFlat
+	md, err := Markdown(config.List{
+		Title:             "AI",
+		GroupByTopic:      true,
+		TopicGroupingMode: &topicGroupingFlat,
+		TopicFallback:     "Misc",
+		Categories: []*config.Category{{Name: "Repositories", Items: []*config.Item{
+			{GHMeta: &github.RepoMeta{
+				FullName: "repo/one",
+				URL:      "https://github.com/repo/one",
+				Topics:   []string{"ai"},
+			}},
+		}}},
+	})
+	require.NoError(t, err)
+
+	// The title "AI" takes the anchor "#ai", so the topic has to be
+	// numbered: "#ai-1".
+	require.Contains(t, md, "- [Ai](#ai-1)")
+	require.Contains(t, md, "### Ai")
+}
+
+// TestMarkdownSanitizesSectionHeadings makes sure a topic name cannot inject
+// Markdown into the headings or the table of contents.
+func TestMarkdownSanitizesSectionHeadings(t *testing.T) {
+	topicGroupingFlat := config.TopicGroupingModeFlat
+	md, err := Markdown(config.List{
+		Title:             "Headings",
+		GroupByTopic:      true,
+		TopicGroupingMode: &topicGroupingFlat,
+		TopicFallback:     "Misc",
+		TagAliases:        map[string]string{"evil": "[click](https://evil.example/pwn)"},
+		Categories: []*config.Category{{Name: "Repositories", Items: []*config.Item{
+			{GHMeta: &github.RepoMeta{
+				FullName: "repo/one",
+				URL:      "https://github.com/repo/one",
+				Topics:   []string{"evil"},
+			}},
+		}}},
+	})
+	require.NoError(t, err)
+
+	// The heading text is escaped, so it can no longer act as a link.
+	require.NotContains(t, md, "](https://evil.example/pwn)")
+	require.NotContains(t, md, "](Https://Evil.example/Pwn)")
+	require.Contains(t, md, `\[`)
+	// The anchor is derived from the plain text of the heading, so it is
+	// the same as the anchor GitHub would generate for it.
+	require.Contains(t, md, "](#clickhttpsevilexamplepwn)")
+}
+
+// TestMarkdownUsesUnixLineEndings makes sure the document does not depend on
+// the platform it was rendered on.
+//
+// The Markdown library writes the line feed of the platform it runs on, so
+// the document would end up with carriage returns on Windows. The line
+// endings are normalised, so that the same list produces the same file
+// everywhere and the README does not change when it is regenerated on
+// another platform.
+func TestMarkdownUsesUnixLineEndings(t *testing.T) {
+	md, err := Markdown(config.List{
+		Title: "Line endings",
+		Categories: []*config.Category{{Name: "Repositories", Items: []*config.Item{
+			{GHMeta: &github.RepoMeta{FullName: "a/one", URL: "https://github.com/a/one"}},
+		}}},
+	})
+	require.NoError(t, err)
+	require.NotContains(t, md, "\r", "the document must not contain carriage returns")
+	require.Contains(t, md, "\n")
+}
+
+// TestMarkdownDerivesTheAnchorFromTheVisibleHeading makes sure that the
+// anchor of a heading is the one GitHub derives from the text a reader sees.
+//
+// An HTML entity in the text would be resolved by the renderer, so the
+// heading a reader sees would no longer be the text the anchor was derived
+// from. The ampersand is escaped, so that cannot happen.
+func TestMarkdownDerivesTheAnchorFromTheVisibleHeading(t *testing.T) {
+	topicGroupingFlat := config.TopicGroupingModeFlat
+	md, err := Markdown(config.List{
+		Title:             "R&amp;D",
+		GroupByTopic:      true,
+		TopicGroupingMode: &topicGroupingFlat,
+		Categories: []*config.Category{{Name: "Repositories", Items: []*config.Item{
+			{GHMeta: &github.RepoMeta{
+				FullName: "repo/one",
+				URL:      "https://github.com/repo/one",
+				Topics:   []string{"rampd"},
+			}},
+		}}},
+	})
+	require.NoError(t, err)
+
+	// The title takes the anchor "#rampd" - the text a reader sees is
+	// "R&amp;D" and not "R&D" - so the topic is numbered: "#rampd-1".
+	require.Contains(t, md, "- [Rampd](#rampd-1)")
+	// The ampersand is escaped, so the renderer cannot resolve the entity
+	// and the heading stays what the anchor was derived from.
+	require.Contains(t, md, `R\&amp;D`)
+}
+
+// TestMarkdownDoesNotReserveAnchorsForHiddenHeadings makes sure that a
+// heading that is not rendered does not take an anchor away from the
+// headings that are.
+//
+// In the nested mode the fallback group is written under the heading of its
+// section when it is the only group of that section, so the heading of the
+// group itself is not rendered. GitHub does not number a heading it does
+// not render either, so the visible group keeps the plain anchor.
+func TestMarkdownDoesNotReserveAnchorsForHiddenHeadings(t *testing.T) {
+	topicGroupingNested := config.TopicGroupingModeNested
+	md, err := Markdown(config.List{
+		Title:             "Nested",
+		GroupByTopic:      true,
+		TopicGroupingMode: &topicGroupingNested,
+		TopicFallback:     "misc",
+		Categories: []*config.Category{{Name: "Repositories", Items: []*config.Item{
+			{GHMeta: &github.RepoMeta{
+				FullName: "repo/one",
+				URL:      "https://github.com/repo/one",
+				Topics:   []string{"ai"},
+			}},
+			{GHMeta: &github.RepoMeta{
+				FullName: "repo/two",
+				URL:      "https://github.com/repo/two",
+			}},
+		}}},
+	})
+	require.NoError(t, err)
+
+	// The visible "Misc" section keeps the plain anchor: the hidden
+	// subsection under "Ai" does not take it away.
+	require.Contains(t, md, "- [Misc](#misc)")
+	require.NotContains(t, md, "#misc-1")
+}
+
+// TestMarkdownRendersLinkItems makes sure a curated link entry is rendered.
+// The entries were dropped entirely before, because the renderer only
+// considered items with GitHub metadata.
+func TestMarkdownRendersLinkItems(t *testing.T) {
+	md, err := Markdown(config.List{
+		Title: "With Links",
+		Categories: []*config.Category{{Name: "Reading", Items: []*config.Item{
+			{Type: config.ItemLink, Title: "The Go Blog", URL: "https://go.dev/blog/", Notes: "Worth reading"},
+		}}},
+	})
+	require.NoError(t, err)
+	require.Contains(t, md, "- [The Go Blog](https://go.dev/blog/) — Worth reading")
+}
+
+// TestMarkdownRendersCategorySections makes sure the configured categories
+// become sections of their own when the entries are not grouped by topic.
+func TestMarkdownRendersCategorySections(t *testing.T) {
+	md, err := Markdown(config.List{
+		Title: "Categorised",
+		Categories: []*config.Category{
+			{Name: "Editors", Items: []*config.Item{
+				{GHMeta: &github.RepoMeta{FullName: "a/one", URL: "https://github.com/a/one"}},
+			}},
+			{Name: "Linters", Items: []*config.Item{
+				{GHMeta: &github.RepoMeta{FullName: "b/two", URL: "https://github.com/b/two"}},
+			}},
+		},
+	})
+	require.NoError(t, err)
+	require.Contains(t, md, "### Editors")
+	require.Contains(t, md, "### Linters")
+	require.Contains(t, md, "- [Editors](#editors)")
+	require.Contains(t, md, "- [Linters](#linters)")
+	// The entries are not grouped by topic.
+	require.NotContains(t, md, "### Misc")
+}
+
+// TestMarkdownDeduplicatesRepositories makes sure a repository that is in
+// two categories is only rendered once.
+func TestMarkdownDeduplicatesRepositories(t *testing.T) {
+	md, err := Markdown(config.List{
+		Title: "Duplicated",
+		Categories: []*config.Category{
+			{Name: "First", Items: []*config.Item{
+				{GHMeta: &github.RepoMeta{FullName: "a/one", URL: "https://github.com/a/one"}},
+			}},
+			{Name: "Second", Items: []*config.Item{
+				{GHMeta: &github.RepoMeta{FullName: "a/one", URL: "https://github.com/a/one"}},
+				{GHMeta: &github.RepoMeta{FullName: "b/two", URL: "https://github.com/b/two"}},
+			}},
+		},
+	})
+	require.NoError(t, err)
+	require.Equal(t, 1, strings.Count(md, "https://github.com/a/one"))
+}
+
+// TestMarkdownPreservesCurationOrder makes sure the entries keep the order
+// they were curated in.
+func TestMarkdownPreservesCurationOrder(t *testing.T) {
+	md, err := Markdown(config.List{
+		Title: "Ordered",
+		Categories: []*config.Category{{Name: "Repositories", Items: []*config.Item{
+			{GHMeta: &github.RepoMeta{FullName: "z/last", URL: "https://github.com/z/last"}},
+			{GHMeta: &github.RepoMeta{FullName: "a/first", URL: "https://github.com/a/first"}},
+		}}},
+	})
+	require.NoError(t, err)
+	require.Less(t, strings.Index(md, "z/last"), strings.Index(md, "a/first"),
+		"the curation order must be preserved")
+}
+
+// TestMarkdownKeepsTheRepositoryWhenALinkNamesIt makes sure a link that
+// names a repository does not take the repository away.
+//
+// The identity of an entry follows its type: a link is a link even when it
+// names a repository, so it cannot suppress the entry that is the
+// repository itself.
+func TestMarkdownKeepsTheRepositoryWhenALinkNamesIt(t *testing.T) {
+	md, err := Markdown(config.List{
+		Title: "Links and repositories",
+		Categories: []*config.Category{
+			{Name: "Documentation", Items: []*config.Item{
+				{Type: config.ItemLink, Repo: "a/one", URL: "https://example.com/docs", Title: "The documentation"},
+			}},
+			{Name: "Repositories", Items: []*config.Item{
+				{GHMeta: &github.RepoMeta{FullName: "a/one", URL: "https://github.com/a/one"}},
+			}},
+		},
+	})
+	require.NoError(t, err)
+
+	// The link is rendered.
+	require.Contains(t, md, "- [The documentation](https://example.com/docs)")
+	// The repository is rendered as well: the link did not take its
+	// identity away.
+	require.Contains(t, md, "- [a/one](https://github.com/a/one)")
+}
+
+// TestMarkdownOmitsTheDanglingSeparator makes sure that an entry without a
+// description does not end with a separator.
+//
+// The separator belongs to the part that follows it, so an entry that has
+// neither a description nor a note ends with the last part it does have.
+func TestMarkdownOmitsTheDanglingSeparator(t *testing.T) {
+	md, err := Markdown(config.List{
+		Title: "Separators",
+		Categories: []*config.Category{
+			{Name: "Repositories", Items: []*config.Item{
+				{GHMeta: &github.RepoMeta{FullName: "a/one", URL: "https://github.com/a/one", Stars: 12}},
+				{GHMeta: &github.RepoMeta{FullName: "b/two", URL: "https://github.com/b/two", Stars: 12},
+					Notes: "Worth a look"},
+			}},
+		},
+	})
+	require.NoError(t, err)
+
+	// The entry without a description ends with the stars: the line ends
+	// right after them.
+	require.Contains(t, md, "- [a/one](https://github.com/a/one) — ⭐ 12\n")
+	// The entry with a note has one separator, not two.
+	require.Contains(t, md, "- [b/two](https://github.com/b/two) — ⭐ 12 — Worth a look\n")
+	require.NotContains(t, md, "— —")
+}
+
+// TestMarkdownRendersAnExplicitLinkAsALink makes sure that an entry that was
+// declared as a link is rendered as a link, even when it also carries the
+// metadata of a repository.
+//
+// The metadata is not set by the configuration file - a link is never
+// enriched - but a list that was built in code, or that was enriched
+// before, can carry it. The declared type is the authoritative one: the
+// curated URL and title are the ones that were configured.
+func TestMarkdownRendersAnExplicitLinkAsALink(t *testing.T) {
+	md, err := Markdown(config.List{
+		Title: "A link with metadata",
+		Categories: []*config.Category{
+			{Name: "Documentation", Items: []*config.Item{
+				{
+					Type:   config.ItemLink,
+					URL:    "https://example.com/docs",
+					Title:  "The documentation",
+					GHMeta: &github.RepoMeta{FullName: "a/one", URL: "https://github.com/a/one", Stars: 42},
+				},
+			}},
+		},
+	})
+	require.NoError(t, err)
+
+	// The entry is rendered with the configured URL and title.
+	require.Contains(t, md, "- [The documentation](https://example.com/docs)")
+	// It is not rendered as the repository it carries the metadata of.
+	require.NotContains(t, md, "https://github.com/a/one")
+	require.NotContains(t, md, "a/one")
+}
+
+// TestMarkdownRendersTheCuratedTitleOfARepository makes sure that the
+// title of a repository entry is the one that was curated.
+//
+// The title of an entry is written by hand, so it is what the reader is
+// meant to see. The name of the repository is the fallback for the entries
+// that do not carry a title.
+func TestMarkdownRendersTheCuratedTitleOfARepository(t *testing.T) {
+	md, err := Markdown(config.List{
+		Title: "Curated titles",
+		Categories: []*config.Category{
+			{Name: "Repositories", Items: []*config.Item{
+				{
+					Type:  config.ItemGitHub,
+					Repo:  "a/one",
+					Title: "The one tool",
+					GHMeta: &github.RepoMeta{
+						FullName: "a/one",
+						URL:      "https://github.com/a/one",
+						Stars:    42,
+					},
+				},
+				{
+					Type: config.ItemGitHub,
+					Repo: "b/two",
+					GHMeta: &github.RepoMeta{
+						FullName: "b/two",
+						URL:      "https://github.com/b/two",
+						Stars:    7,
+					},
+				},
+			}},
+		},
+	})
+	require.NoError(t, err)
+
+	// The curated title is rendered instead of the name of the repository.
+	require.Contains(t, md, "- [The one tool](https://github.com/a/one)")
+	require.NotContains(t, md, "- [a/one](https://github.com/a/one)")
+	// An entry without a title keeps the name of the repository.
+	require.Contains(t, md, "- [b/two](https://github.com/b/two)")
 }

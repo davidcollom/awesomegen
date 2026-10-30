@@ -1,0 +1,20 @@
+# Keep the build context small and free of local state.
+.git
+.github
+.opencode
+
+# Build output.
+bin/
+dist/
+awesomegen
+awesomegen.exe
+
+# Documentation and examples are not needed to build the binary.
+*.md
+!README.md
+example/
+
+# Local configuration and secrets.
+config.yaml
+.env
+*.log

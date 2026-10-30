@@ -8,35 +8,23 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"time"
-
-	"github.com/invopop/jsonschema"
-	"github.com/stoewer/go-strcase"
 
 	// Import the actual config package
 	"github.com/davidcollom/awesomegen/internal/config"
 )
 
 func main() {
-	// Create a new schema reflector
-	reflector := jsonschema.Reflector{
-		AllowAdditionalProperties: false,
-		DoNotReference:            false,
-		ExpandedStruct:            true,
-		KeyNamer:                  strcase.SnakeCase,
-	}
-	// err := reflector.AddGoComments("github.com/davidcollom/awesomegen", ".")
-	// if err != nil {
-	// 	log.Fatalf("Failed to add Go comments: %v", err)
-	// }
+	reflector := config.SchemaReflector()
 
 	// Generate schema for Config struct
 	schema := reflector.Reflect(&config.Config{})
 	schema.Version = "https://json-schema.org/draft-07/schema"
-	schema.Title = fmt.Sprintf("Config.YAML (Generated: %s)", time.Now().Format("2006-01-02 15:04:05"))
+	// Deliberately no timestamp: the generated file must be byte-for-byte
+	// reproducible so CI can detect drift.
+	schema.Title = "awesomegen configuration schema"
 	schema.Description = "Configuration schema for awesomegen"
 	schema.Comments = "This schema is auto-generated from the Go struct definitions. Do not edit directly."
-	schema.ID = "https://example.com/schemas/awesomegen/config-schema.json"
+	schema.ID = "https://github.com/davidcollom/awesomegen/blob/main/config-schema.json"
 
 	// Get the output file path (relative to the package directory)
 	outputPath := "../../config-schema.json"
@@ -55,6 +43,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to marshal schema: %v", err)
 	}
+	jsonData = append(jsonData, '\n')
 
 	// Write to file
 	if err := os.WriteFile(outputPath, jsonData, 0644); err != nil {

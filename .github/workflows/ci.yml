@@ -1,0 +1,266 @@
+# Continuous integration for awesomegen.
+#
+# Design notes
+# ------------
+# * `pull_request_target` is deliberately NOT used: it runs with a write
+#   scoped token and would let a pull request execute code with write access
+#   to the repository. Every job below checks out untrusted pull-request code
+#   with a read-only token only.
+# * The top level `permissions` block grants `contents: read` and nothing
+#   else. No job in this workflow needs to escalate, so none of them does.
+# * Every third-party action is pinned to a full 40 character commit SHA.
+#   The human readable version lives in the comment next to the pin, so
+#   dependabot can still bump it and a reviewer can tell what the pin is.
+# * No secret is ever echoed. The only credential in play is the read-only
+#   `GITHUB_TOKEN` that GitHub provides automatically, and it is passed
+#   through `env` rather than being interpolated into a shell command.
+
+name: ci
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Pinned so that a lint run is reproducible; bump together with .golangci.yml.
+  GOLANGCI_LINT_VERSION: 'v2.15.0'
+  # Check the sources out with the line endings they are stored with.
+  #
+  # Git on Windows rewrites the line endings of every file it checks out,
+  # so the working tree would differ from the repository. The formatting
+  # check would then report the whole repository as unformatted, and the
+  # binaries that are built from it would not be the same on every
+  # platform. The setting is passed through the environment, so that it
+  # applies to the checkout itself and not only to the later steps.
+  GIT_CONFIG_COUNT: '1'
+  GIT_CONFIG_KEY_0: core.autocrlf
+  GIT_CONFIG_VALUE_0: 'false'
+
+jobs:
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    # A job that hangs holds a runner for hours. The lint does not need that
+    # long: the job fails instead of waiting.
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        # The version comes from the `go` directive of go.mod, so the lint
+        # always runs with the Go version the module is built with and
+        # never drifts away from it.
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+
+      - name: Check the Go version
+        # Every job of the workflow has to run with the Go version that
+        # go.mod names: a build with another toolchain says nothing about
+        # the one the release is made with.
+        #
+        # setup-go takes the version from the `toolchain` directive of go.mod
+        # when there is one, and from the `go` directive otherwise. A
+        # `toolchain` directive would move the CI to another version, so it
+        # is reported here instead of being ignored.
+        run: |
+          set -euo pipefail
+          required="$(sed -n 's/^go \([0-9][0-9.]*\)$/\1/p' go.mod | head -n 1)"
+          toolchain="$(sed -n 's/^toolchain go\([0-9][0-9.]*\)$/\1/p' go.mod | head -n 1)"
+          installed="$(go env GOVERSION)"
+          if [ -z "${required}" ]; then
+            echo "::error::No 'go' directive was found in go.mod"
+            exit 1
+          fi
+          if [ -n "${toolchain}" ]; then
+            echo "::error::go.mod pins the toolchain to Go ${toolchain}. The CI has to run with Go ${required}, the version the module is built with: remove the toolchain directive."
+            exit 1
+          fi
+          if [ "${installed}" != "go${required}" ]; then
+            echo "::error::go.mod requires Go ${required}, but Go ${installed} is installed"
+            exit 1
+          fi
+          echo "Go ${installed} is the version that go.mod requires"
+
+      - name: gofmt
+        run: |
+          set -euo pipefail
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "::error::The following files are not gofmt'ed:"
+            echo "$unformatted"
+            echo "::error::Run 'make fmt' to fix them."
+            exit 1
+          fi
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: Check the JSON schema
+        # config-schema.json is generated from the Go types. The committed
+        # file has to be what the types produce, otherwise the schema that
+        # is published - and the one an editor checks the configuration
+        # against - drifts away from the loader.
+        run: |
+          set -euo pipefail
+          go generate ./...
+          git diff --exit-code -- config-schema.json
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          version: ${{ env.GOLANGCI_LINT_VERSION }}
+
+  test:
+    name: test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    # A job that hangs holds a runner for hours. The test suite does not need
+    # that long: the job fails instead of waiting.
+    timeout-minutes: 30
+    defaults:
+      run:
+        # The default shell on Windows is PowerShell, which does not hand
+        # the argument of "-coverprofile=coverage.out" to the go command
+        # unchanged: it splits it, and ".out" is then read as a package
+        # pattern. Git Bash passes the argument on as it is, so that the
+        # matrix runs the very same command on every platform.
+        shell: bash
+    strategy:
+      fail-fast: false
+      matrix:
+        # One Go version is supported, and it is the one that go.mod names.
+        # The version itself is not part of the matrix: it comes from go.mod
+        # in the step that sets up Go, so that it is named in one place
+        # only.
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        # The version comes from the `go` directive of go.mod, so that the
+        # tests always run with the version the module is built with.
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+
+      # The race detector needs cgo and a C compiler. GitHub's Linux and
+      # macOS images ship one; the Windows image does not guarantee a
+      # compiler on PATH, so Windows runs the suite without -race.
+      - name: Test with race detector
+        if: runner.os != 'Windows'
+        run: go test -race -coverprofile=coverage.out ./...
+
+      - name: Test
+        if: runner.os == 'Windows'
+        run: go test -coverprofile=coverage.out ./...
+
+      - name: Coverage summary
+        if: runner.os != 'Windows'
+        run: go tool cover -func=coverage.out
+
+      - name: Upload coverage profile
+        # Upload once, from the canonical Linux job, to avoid several jobs
+        # racing for the same artifact name.
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: coverage
+          path: coverage.out
+          if-no-files-found: error
+          retention-days: 14
+          # A repeated run of the workflow replaces the profile of the
+          # previous run instead of failing with "an artifact with this
+          # name already exists".
+          overwrite: true
+
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    # A job that hangs holds a runner for hours. The build does not need that
+    # long: the job fails instead of waiting.
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        # The version comes from the `go` directive of go.mod, so that the
+        # build always runs with the Go version the module is built with.
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+
+      - name: Cross compile release binaries
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          # The date of the commit, not the date of the build: a build date
+          # would make two builds of the same commit differ.
+          commit_date="$(git show -s --format=%cI HEAD)"
+          for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64; do
+            goos="${target%/*}"
+            goarch="${target#*/}"
+            out="dist/awesomegen_${goos}_${goarch}"
+            if [ "$goos" = "windows" ]; then
+              out="${out}.exe"
+            fi
+            echo "Building ${goos}/${goarch}"
+            CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" \
+              go build -trimpath -ldflags "-s -w -X main.version=ci -X main.commit=${GITHUB_SHA} -X main.date=${commit_date}" -o "$out" ./cmd/awesomegen
+          done
+
+      - name: Smoke test the linux/amd64 binary
+        run: ./dist/awesomegen_linux_amd64 --version
+
+      - name: Build the container image
+        run: docker build --tag awesomegen:ci .
+
+      - name: Smoke test the container image
+        run: docker run --rm awesomegen:ci --version
+
+  govulncheck:
+    name: govulncheck
+    runs-on: ubuntu-latest
+    # A job that hangs holds a runner for hours. The scan does not need that
+    # long: the job fails instead of waiting.
+    timeout-minutes: 15
+    steps:
+      # The action checks out the repository itself and installs
+      # golang.org/x/vuln/cmd/govulncheck.
+      #
+      # The action always installs the newest release of the scanner, while
+      # the Makefile pins one version for a local run. The scanner is the
+      # tool that finds the vulnerabilities, so the newest one is the one
+      # that knows about the advisories that were published last. The two
+      # versions can therefore report different results; that is tracked in
+      # issue #92.
+      - name: Run govulncheck
+        uses: golang/govulncheck-action@032d45514ae346b1db93c04b0c90b841c370344f # v1.1.0
+        with:
+          # The version comes from the `go` directive of go.mod, so that the
+          # scan looks at the standard library the artefacts are built
+          # with. The version input has to be empty for that: the action
+          # passes both to setup-go, and setup-go prefers the version input
+          # over the version file.
+          go-version-input: ''
+          go-version-file: go.mod
+          go-package: ./...
+          output-format: text

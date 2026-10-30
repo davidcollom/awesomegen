@@ -1,6 +1,13 @@
 module github.com/davidcollom/awesomegen
 
-go 1.26.0
+// The one Go version this project is built and tested with.
+//
+// Every workflow reads the version from this directive, so that the
+// version of the toolchain is named in exactly one place. The patch
+// version is part of it on purpose: the patch releases of a line carry
+// the fixes of the standard library, and a build with a toolchain that
+// has them is the one that should be released.
+go 1.27.3
 
 require (
 	github.com/PuerkitoBio/goquery v1.13.0
@@ -13,7 +20,6 @@ require (
 	github.com/spf13/cobra v1.10.2
 	github.com/stoewer/go-strcase v1.3.1
 	github.com/stretchr/testify v1.12.1
-	golang.org/x/oauth2 v0.37.0
 	golang.org/x/text v0.43.0
 	gopkg.in/yaml.v3 v3.0.1
 )
@@ -43,7 +49,7 @@ require (
 	github.com/spf13/pflag v1.0.9 // indirect
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
 	go.yaml.in/yaml/v4 v4.0.0-rc.2 // indirect
-	golang.org/x/crypto v0.55.0 // indirect
-	golang.org/x/net v0.58.0 // indirect
-	golang.org/x/sys v0.48.0 // indirect
+	golang.org/x/crypto v0.58.0 // indirect
+	golang.org/x/net v0.62.0 // indirect
+	golang.org/x/sys v0.49.0 // indirect
 )
