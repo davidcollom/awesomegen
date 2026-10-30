@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/go-logr/logr"
 	"github.com/jonboulle/clockwork"
 	"github.com/spf13/cobra"
 
@@ -31,11 +32,46 @@ func newGenerateCommand(opts *options) *cobra.Command {
 	}
 }
 
+// generator holds the collaborators of a generation run.
+//
+// They are fields rather than locals so that a test can replace the scraper
+// and the GitHub client with fakes and run the whole generation offline,
+// without a network connection.
+type generator struct {
+	Scraper scrape.Scraper
+	GH      httpgh.Client
+	Clock   clockwork.Clock
+	Log     logr.Logger
+}
+
+// newGenerator returns the generator that talks to GitHub.
+func newGenerator(log logr.Logger) *generator {
+	token := os.Getenv("GH_TOKEN")
+	if token == "" {
+		token = os.Getenv("GITHUB_TOKEN")
+	}
+	if token == "" {
+		log.Info("no GitHub token found, the API rate limit will be low",
+			"hint", "set GH_TOKEN or GITHUB_TOKEN")
+	}
+	return &generator{
+		Scraper: scrape.NewScraper(log), // HTML scraper for Star Lists
+		GH:      httpgh.New(token),      // GitHub REST client (enrichment)
+		Clock:   clockwork.NewRealClock(),
+		Log:     log,
+	}
+}
+
 // runGenerate scrapes, enriches, filters and renders every list of the
 // configuration file.
 func runGenerate(cmd *cobra.Command, opts *options) error {
+	return runGenerateWith(cmd, opts, newGenerator(loggerFrom(cmd.Context())))
+}
+
+// runGenerateWith runs a generation with the given collaborators.
+func runGenerateWith(cmd *cobra.Command, opts *options, gen *generator) error {
 	ctx := cmd.Context()
-	log := loggerFrom(ctx)
+	log := gen.Log
 
 	cfg, err := config.Load(opts.configPath)
 	if err != nil {
@@ -56,18 +92,7 @@ func runGenerate(cmd *cobra.Command, opts *options) error {
 		return err
 	}
 
-	token := os.Getenv("GH_TOKEN")
-	if token == "" {
-		token = os.Getenv("GITHUB_TOKEN")
-	}
-	if token == "" {
-		log.Info("no GitHub token found, the API rate limit will be low",
-			"hint", "set GH_TOKEN or GITHUB_TOKEN")
-	}
-	gh := httpgh.New(token) // GitHub REST client (enrichment)
-	clk := clockwork.NewRealClock()
-	sc := scrape.NewScraper(log) // HTML scraper for Star Lists
-	enr := render.Enricher{GH: gh, Now: clk, Log: log}
+	enr := render.Enricher{GH: gen.GH, Now: gen.Clock, Log: log}
 
 	for i, list := range cfg.Lists {
 		// 1) scrape owner/repo slugs from your Star List
@@ -75,7 +100,7 @@ func runGenerate(cmd *cobra.Command, opts *options) error {
 		seen := map[string]struct{}{}
 		for _, src := range list.Sources {
 			log.V(1).Info("scraping star list", "user", src.User, "slug", src.Slug)
-			slugs, err := sc.ListRepos(ctx, src.User, src.Slug)
+			slugs, err := gen.Scraper.ListRepos(ctx, src.User, src.Slug)
 			if err != nil {
 				return fmt.Errorf("scrape %s/%s: %w", src.User, src.Slug, err)
 			}

@@ -31,7 +31,14 @@ func run(t *testing.T, args ...string) (string, error) {
 func writeConfig(t *testing.T, body string) string {
 	t.Helper()
 
-	dir := t.TempDir()
+	return writeConfigIn(t, t.TempDir(), body)
+}
+
+// writeConfigIn writes a configuration file into the given directory and
+// returns its path.
+func writeConfigIn(t *testing.T, dir, body string) string {
+	t.Helper()
+
 	path := filepath.Join(dir, "config.yaml")
 	require.NoError(t, os.WriteFile(path, []byte(body), 0o600))
 	return path
