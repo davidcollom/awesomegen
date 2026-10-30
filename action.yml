@@ -1,12 +1,181 @@
 name: "AwesomeGen"
 description: "Generate Awesome README(s) from GitHub Star Lists"
+author: "davidcollom"
+branding:
+  icon: "star"
+  color: "yellow"
+
+# Why a composite action and not a Docker action?
+# ---------------------------------------------
+# The container image that this project publishes to GHCR runs as a
+# non-root user (uid 65532, from the distroless base). A Docker action
+# executes inside that container, and the mounted workspace is owned by the
+# runner user, so the generated README could not be written back into the
+# repository - which is the whole point of the action.
+# A composite action runs the released binary directly on the runner: it
+# keeps the workspace permissions intact, needs no container pull, and it
+# works on Linux, macOS and Windows runners.
+# The published container image is still available for anyone who prefers to
+# run it directly: `docker run --rm -v "$PWD:/work" -w /work ghcr.io/davidcollom/awesomegen:v1.0.0`.
 inputs:
   config:
-    description: "Path to config file"
+    description: "Path to the awesomegen configuration file, relative to the workspace."
+    required: false
     default: "config.yaml"
+  version:
+    description: "The awesomegen release to run, for example 'v1.2.3'. Use 'latest' to pick the newest published release."
+    required: false
+    default: "latest"
+  github-token:
+    description: "Token used for the GitHub API calls. Defaults to the token GitHub provides to the workflow, so no personal access token has to be pasted."
+    required: false
+    default: ${{ github.token }}
+
 runs:
-  using: "docker"
-  image: "docker://ghcr.io/davidcollom/awesomegen:v1.0.0"
-  args:
-    - "--config"
-    - "${{ inputs.config }}"
+  using: "composite"
+  steps:
+    - name: Resolve the awesomegen release
+      id: resolve
+      shell: bash
+      env:
+        INPUT_VERSION: ${{ inputs.version }}
+        INPUT_TOKEN: ${{ inputs.github-token }}
+      run: |
+        set -euo pipefail
+
+        version="${INPUT_VERSION}"
+        if [ -z "${version}" ] || [ "${version}" = "latest" ]; then
+          echo "Resolving the latest awesomegen release"
+          curl_args=(-fsSL --retry 3 --retry-delay 2 -H "Accept: application/vnd.github+json")
+          if [ -n "${INPUT_TOKEN}" ]; then
+            curl_args+=(-H "Authorization: Bearer ${INPUT_TOKEN}")
+          fi
+          response="$(curl "${curl_args[@]}" "https://api.github.com/repos/davidcollom/awesomegen/releases/latest")"
+          # The release payload is pretty printed JSON, so the tag is on a
+          # line of its own. Avoids depending on jq being installed.
+          version="$(printf '%s\n' "${response}" | sed -n 's/^[[:space:]]*"tag_name":[[:space:]]*"\([^"]*\)".*$/\1/p' | head -n 1)"
+        fi
+
+        if [ -z "${version}" ] || [ "${version}" = "null" ]; then
+          echo "::error::Could not resolve an awesomegen release to run"
+          exit 1
+        fi
+
+        echo "Using awesomegen ${version}"
+        echo "version=${version}" >> "${GITHUB_OUTPUT}"
+
+    - name: Download and verify awesomegen
+      id: install
+      shell: bash
+      env:
+        VERSION: ${{ steps.resolve.outputs.version }}
+      run: |
+        set -euo pipefail
+
+        # The archive name follows the GoReleaser template
+        # "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}", where
+        # .Version carries no leading "v" but the release tag has one.
+        version="${VERSION}"
+
+        case "${RUNNER_OS}" in
+          Linux)   goos=linux ;;
+          macOS)   goos=darwin ;;
+          Windows) goos=windows ;;
+          *) echo "::error::Unsupported runner OS: ${RUNNER_OS}"; exit 1 ;;
+        esac
+
+        case "${RUNNER_ARCH}" in
+          X64)   goarch=amd64 ;;
+          ARM64) goarch=arm64 ;;
+          # The releases are built for amd64 and arm64 only.
+          *) echo "::error::Unsupported runner architecture: ${RUNNER_ARCH}"; exit 1 ;;
+        esac
+
+        # The release tag carries a leading "v"; the file names of the
+        # artefacts do not. Accept both spellings from the caller.
+        tag="${version}"
+        case "${tag}" in
+          v*) version_number="${tag#v}" ;;
+          *)  version_number="${tag}"; tag="v${tag}" ;;
+        esac
+
+        if [ "${goos}" = "windows" ]; then
+          archive="awesomegen_${version_number}_${goos}_${goarch}.zip"
+          binary_name="awesomegen.exe"
+        else
+          archive="awesomegen_${version_number}_${goos}_${goarch}.tar.gz"
+          binary_name="awesomegen"
+        fi
+
+        base_url="https://github.com/davidcollom/awesomegen/releases/download/${tag}"
+        workdir="${RUNNER_TEMP}/awesomegen"
+        rm -rf "${workdir}"
+        mkdir -p "${workdir}"
+        cd "${workdir}"
+
+        curl -fsSL --retry 3 --retry-delay 2 -o "${archive}" "${base_url}/${archive}"
+        curl -fsSL --retry 3 --retry-delay 2 -o checksums.txt "${base_url}/checksums.txt"
+
+        # Verify the download against the published checksum file.
+        sha256_of() {
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum "$1" | cut -d' ' -f1
+          elif command -v shasum >/dev/null 2>&1; then
+            shasum -a 256 "$1" | cut -d' ' -f1
+          elif command -v openssl >/dev/null 2>&1; then
+            openssl dgst -sha256 "$1" | awk '{print $NF}'
+          else
+            echo "::error::No SHA-256 utility found on this runner" >&2
+            exit 1
+          fi
+        }
+
+        expected="$(awk -v name="${archive}" '{ if ($NF == name) print $1 }' checksums.txt | head -n 1)"
+        if [ -z "${expected}" ]; then
+          echo "::error::${archive} is not listed in checksums.txt"
+          exit 1
+        fi
+        actual="$(sha256_of "${archive}")"
+        if [ "${expected}" != "${actual}" ]; then
+          echo "::error::Checksum mismatch for ${archive}: expected ${expected}, got ${actual}"
+          exit 1
+        fi
+        echo "Verified ${archive} (sha256 ${actual})"
+
+        case "${archive}" in
+          *.zip)
+            if command -v unzip >/dev/null 2>&1; then
+              unzip -q -o "${archive}" -d .
+            elif tar --version 2>/dev/null | grep -q bsdtar; then
+              tar -xf "${archive}"
+            else
+              powershell -NoProfile -Command "Expand-Archive -LiteralPath '${archive}' -DestinationPath '.' -Force"
+            fi
+            ;;
+          *.tar.gz)
+            tar -xzf "${archive}"
+            ;;
+        esac
+
+        if [ ! -f "${binary_name}" ]; then
+          echo "::error::${binary_name} was not found in the release archive"
+          exit 1
+        fi
+        chmod +x "${binary_name}"
+
+        echo "binary=${workdir}/${binary_name}" >> "${GITHUB_OUTPUT}"
+
+    - name: Run awesomegen
+      shell: bash
+      env:
+        # The configuration path and the binary are passed through the
+        # environment, so that a value containing shell metacharacters
+        # cannot be interpreted by the shell.
+        CONFIG_PATH: ${{ inputs.config }}
+        AWESOMEGEN_BIN: ${{ steps.install.outputs.binary }}
+        # awesomegen reads GH_TOKEN first and falls back to GITHUB_TOKEN.
+        GH_TOKEN: ${{ inputs.github-token }}
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+      run: |
+        set -euo pipefail
+        "${AWESOMEGEN_BIN}" --config "${CONFIG_PATH}"

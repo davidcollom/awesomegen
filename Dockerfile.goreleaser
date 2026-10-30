@@ -1,0 +1,35 @@
+# syntax=docker/dockerfile:1
+#
+# Dockerfile used by the GoReleaser "dockers_v2" pipe (see .goreleaser.yaml).
+#
+# GoReleaser compiles the binaries before the image is built and places them
+# in the build context under their target platform, for example
+# "linux/amd64/awesomegen". This Dockerfile therefore only copies them into
+# a distroless runtime.
+#
+# The consequence is that the published image contains exactly the binary
+# that is published - and signed - as part of the release, and the binary is
+# not compiled a second time inside the image.
+#
+# The base image is pinned by digest. To refresh the pin:
+#   docker buildx imagetools inspect gcr.io/distroless/static:nonroot --format '{{ .Manifest.Digest }}'
+FROM gcr.io/distroless/static:nonroot@sha256:18f4cc26c9ffa7f20a359298be7deadac5c607c8e03a02b8119f1a5fc2f82c99
+
+# Provided by buildx.
+ARG TARGETPLATFORM
+ARG TARGETARCH
+ARG TARGETOS
+ARG VERSION=dev
+
+LABEL org.opencontainers.image.title="awesomegen" \
+      org.opencontainers.image.description="Generate Awesome lists from GitHub Star Lists" \
+      org.opencontainers.image.source="https://github.com/davidcollom/awesomegen" \
+      org.opencontainers.image.licenses="MIT" \
+      org.opencontainers.image.version="${VERSION}"
+
+COPY ${TARGETPLATFORM}/awesomegen /usr/local/bin/awesomegen
+
+# The distroless "nonroot" user, uid/gid 65532.
+USER nonroot:nonroot
+
+ENTRYPOINT ["/usr/local/bin/awesomegen"]
