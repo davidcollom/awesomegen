@@ -2,6 +2,7 @@ package scrape_test
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -138,6 +139,11 @@ func TestListReposRejectsInvalidInput(t *testing.T) {
 	}
 }
 
+// TestListReposNotFound makes sure that a star list that does not exist is
+// reported as an error.
+//
+// A missing list and an empty list are not the same thing: a missing list
+// would empty a curated README without a word, because nothing would fail.
 func TestListReposNotFound(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
@@ -148,8 +154,34 @@ func TestListReposNotFound(t *testing.T) {
 	sc.BaseURL = srv.URL
 
 	out, err := sc.ListRepos(context.Background(), "owner", "missing")
-	require.NoError(t, err)
+	require.Error(t, err)
 	require.Empty(t, out)
+}
+
+// TestListReposEndsOnMissingPage makes sure that a page that is not there
+// ends the list instead of failing the run.
+//
+// Only the first page proves that the list exists at all. A later page that
+// is gone simply ends the list.
+func TestListReposEndsOnMissingPage(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		page := r.URL.Query().Get("page")
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		switch page {
+		case "1":
+			_, _ = w.Write([]byte(`<a href="/owner/one">one</a><a rel="next" href="?page=2">Next</a>`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+
+	sc := scrape.NewScraper(stdr.New(nil))
+	sc.BaseURL = srv.URL
+
+	out, err := sc.ListRepos(context.Background(), "owner", "list")
+	require.NoError(t, err)
+	require.Equal(t, []string{"owner/one"}, out)
 }
 
 func TestListReposServerError(t *testing.T) {
@@ -276,4 +308,50 @@ func TestListReposFallbackScanRejectsNavigationLinks(t *testing.T) {
 	out, err := sc.ListRepos(context.Background(), "owner", "list")
 	require.NoError(t, err)
 	require.Equal(t, []string{"owner/repo"}, out)
+}
+
+// TestListReposStopsAtThePageCap makes sure that the scraper stops at the
+// page cap and does not ask for more pages than it is allowed to.
+//
+// The cap is the last resort against a list that never ends, and it has to
+// be the number of pages it claims to be.
+func TestListReposStopsAtThePageCap(t *testing.T) {
+	var pages int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		pages++
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = fmt.Fprintf(w, `<a href="/owner/repo%d">repo</a><a rel="next" href="?page=2">Next</a>`, pages)
+	}))
+	defer srv.Close()
+
+	sc := scrape.NewScraper(stdr.New(nil))
+	sc.BaseURL = srv.URL
+
+	out, err := sc.ListRepos(context.Background(), "owner", "list")
+	require.NoError(t, err)
+	require.Len(t, out, scrape.MaxPages)
+	require.Equal(t, scrape.MaxPages, pages, "the scraper asks for at most MaxPages pages")
+}
+
+// TestListReposIgnoresPathsThatAreNotRepositories makes sure that the
+// fallback scan only collects paths that look like a repository.
+//
+// The fallback is used when GitHub changes the markup of the list, and then
+// every link of the page is a candidate.
+func TestListReposIgnoresPathsThatAreNotRepositories(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write([]byte(`<a href="/owner/one">one</a>` +
+			`<a href="/not a repo/two">two</a>` +
+			`<a href="/owner/three/extra">three</a>` +
+			`<a href="/..">up</a>`))
+	}))
+	defer srv.Close()
+
+	sc := scrape.NewScraper(stdr.New(nil))
+	sc.BaseURL = srv.URL
+
+	out, err := sc.ListRepos(context.Background(), "owner", "list")
+	require.NoError(t, err)
+	require.Equal(t, []string{"owner/one"}, out)
 }

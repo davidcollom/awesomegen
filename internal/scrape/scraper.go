@@ -14,6 +14,8 @@ import (
 
 	"github.com/PuerkitoBio/goquery"
 	"github.com/go-logr/logr"
+
+	"github.com/davidcollom/awesomegen/internal/github"
 )
 
 // MaxPageBytes bounds the size of a single scraped page. Go's transport
@@ -119,7 +121,7 @@ func (s *HTMLScraper) ListRepos(ctx context.Context, user, slug string) ([]strin
 
 	var out []string
 	seen := map[string]struct{}{}
-	for page := 1; page < MaxPages; page++ { // reasonable safety cap
+	for page := 1; page <= MaxPages; page++ { // reasonable safety cap
 		u := fmt.Sprintf("%s/stars/%s/lists/%s?page=%d",
 			strings.TrimRight(base, "/"),
 			url.PathEscape(user),
@@ -137,7 +139,16 @@ func (s *HTMLScraper) ListRepos(ctx context.Context, user, slug string) ([]strin
 		}
 		if resp.StatusCode == http.StatusNotFound {
 			_ = resp.Body.Close()
-			break
+			// The first page of a star list that does not exist is a
+			// missing list, not an empty one. The run stops with an
+			// error, so that a renamed or deleted list cannot empty a
+			// curated README.
+			if page == 1 {
+				return nil, fmt.Errorf("scrape: star list %s/%s not found", user, slug)
+			}
+			// A later page that is not there ends the list.
+			s.log.Info("the list ended", "page", page, "repos_found", len(out))
+			return out, nil
 		}
 		if resp.StatusCode != http.StatusOK {
 			_ = resp.Body.Close()
@@ -186,7 +197,7 @@ func (s *HTMLScraper) ListRepos(ctx context.Context, user, slug string) ([]strin
 	}
 
 	// The page cap was reached while the list still had more pages.
-	s.log.Info("page cap reached, the list may be truncated", "max_pages", MaxPages-1)
+	s.log.Info("page cap reached, the list may be truncated", "max_pages", MaxPages)
 	// The order of the repositories is the curation order of the star list
 	// and is deliberately not sorted.
 	return out, nil
@@ -233,6 +244,10 @@ func repoHrefs(doc *goquery.Document) ([]string, bool) {
 // the pages of GitHub collide with real repository owners - "education" and
 // "features", for example - so a repository must never be discarded because
 // of its owner.
+//
+// The two segments have to look like an owner and a repository, so that the
+// fallback scan cannot pick up a path that only happens to have two
+// segments.
 func parseRepoHref(href string, fromEntries bool) (string, bool) {
 	if strings.ContainsAny(href, "?#") {
 		return "", false
@@ -245,6 +260,9 @@ func parseRepoHref(href string, fromEntries bool) (string, bool) {
 		return "", false
 	}
 	if !fromEntries && slices.Contains(excludedLinks, strings.ToLower(parts[0])) {
+		return "", false
+	}
+	if _, _, err := github.SplitOwnerRepo(parts[0] + "/" + parts[1]); err != nil {
 		return "", false
 	}
 	return parts[0] + "/" + parts[1], true
