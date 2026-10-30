@@ -27,7 +27,7 @@ type LookupError struct {
 }
 
 func (e *LookupError) Error() string {
-	return fmt.Sprintf("%d of %d repository lookups failed (last error: %v)", e.Failed, e.Total, e.Err)
+	return fmt.Sprintf("%d of %d repositories could not be loaded (last error: %v)", e.Failed, e.Total, e.Err)
 }
 
 func (e *LookupError) Unwrap() error { return e.Err }
@@ -58,6 +58,16 @@ func (e Enricher) EnrichAndFilter(ctx context.Context, list config.List) (config
 	}
 	out := cloneList(list)
 
+	// The same repository can be curated in several categories and be part
+	// of a scraped star list as well. Every repository is loaded once, so
+	// that a list does not spend the rate limit of the API on the same
+	// repository twice.
+	type result struct {
+		meta github.RepoMeta
+		err  error
+	}
+	cache := map[string]result{}
+
 	var failures int
 	var total int
 	var lastErr error
@@ -73,8 +83,13 @@ func (e Enricher) EnrichAndFilter(ctx context.Context, list config.List) (config
 			}
 			if it.IsGitHub() {
 				total++
-				meta, err := e.GH.GetRepo(ctx, it.Repo)
-				if err != nil {
+				res, cached := cache[it.Repo]
+				if !cached {
+					meta, err := e.GH.GetRepo(ctx, it.Repo)
+					res = result{meta: meta, err: err}
+					cache[it.Repo] = res
+				}
+				if res.err != nil {
 					// A canceled run is not a per-repository failure: the
 					// remaining lookups would fail for the same reason.
 					// Report it as a fatal error so a partial list is
@@ -82,11 +97,12 @@ func (e Enricher) EnrichAndFilter(ctx context.Context, list config.List) (config
 					if ctxErr := ctx.Err(); ctxErr != nil {
 						return out, ctxErr
 					}
-					e.Log.Error(err, "github lookup failed", "repo", it.Repo)
+					e.Log.Error(res.err, "github lookup failed", "repo", it.Repo)
 					failures++
-					lastErr = err
+					lastErr = res.err
 					continue
 				}
+				meta := res.meta
 				if meta.Archived {
 					e.Log.Info("skipping archived repo", "repo", it.Repo)
 					continue

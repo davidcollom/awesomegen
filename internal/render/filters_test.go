@@ -177,3 +177,44 @@ func TestLookupErrorAllFailed(t *testing.T) {
 		})
 	}
 }
+
+// countingGH counts the lookups it is asked for.
+type countingGH struct {
+	repos map[string]github.RepoMeta
+	calls map[string]int
+}
+
+func (c *countingGH) GetRepo(_ context.Context, name string) (github.RepoMeta, error) {
+	if c.calls == nil {
+		c.calls = map[string]int{}
+	}
+	c.calls[name]++
+	return c.repos[name], nil
+}
+
+// TestEnrichAndFilterLoadsEveryRepositoryOnce makes sure that a repository
+// that is curated in two categories is loaded once.
+//
+// The rate limit of the API is small, and a repository that is looked up
+// twice is a lookup that can fail where the first one succeeded.
+func TestEnrichAndFilterLoadsEveryRepositoryOnce(t *testing.T) {
+	clk := clockwork.NewFakeClockAt(time.Date(2025, 8, 1, 0, 0, 0, 0, time.UTC))
+	gh := &countingGH{repos: map[string]github.RepoMeta{
+		"a/b": {FullName: "a/b", Stars: 100, PushedAt: time.Date(2025, 7, 1, 0, 0, 0, 0, time.UTC)},
+	}}
+	l := config.List{Title: "T", MinStars: 50, StaleMonths: ptr(24),
+		Categories: []*config.Category{
+			{Name: "First", Items: []*config.Item{
+				{Type: config.ItemGitHub, Repo: "a/b"},
+			}},
+			{Name: "Second", Items: []*config.Item{
+				{Type: config.ItemGitHub, Repo: "a/b"},
+			}},
+		}}
+	enr := render.Enricher{GH: gh, Now: clk}
+
+	out, err := enr.EnrichAndFilter(context.Background(), l)
+	require.NoError(t, err)
+	require.Len(t, out.Categories, 2)
+	require.Equal(t, 1, gh.calls["a/b"], "the repository is loaded once")
+}
