@@ -490,7 +490,8 @@ make build
 ```
 
 The project needs Go 1.26 or newer and nothing else: the linter, GoReleaser
-and govulncheck are run through `go run` with a pinned version.
+and govulncheck are run through `go run` with a pinned version. The release
+itself is cut by the release workflow, when the tag is pushed.
 
 ### Make targets
 
@@ -510,9 +511,16 @@ and govulncheck are run through `go run` with a pinned version.
 | `make schema-check` | fail when `config-schema.json` is out of date |
 | `make tidy` | run `go mod tidy` |
 | `make vuln` | run govulncheck against the dependency graph |
-| `make release` | cut a release with GoReleaser |
+| `make release` | prepare the release locally (the workflow signs and publishes it) |
 | `make snapshot` | build a snapshot release with GoReleaser (nothing is published) |
 | `make clean` | remove `bin/`, `dist/` and `coverage.out` |
+
+`make release` creates the draft release and the artefacts of the current
+tag. It needs a clean working tree, a tag and a GitHub token, and it skips
+the SBOM, the signatures and the container image: they need syft, cosign
+with an OIDC token and a Docker daemon, none of which a local machine has.
+The release workflow does all three when the tag is pushed, and it reuses
+the draft that `make release` created.
 
 ### Tests
 
