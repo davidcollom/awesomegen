@@ -53,6 +53,9 @@ jobs:
   lint:
     name: lint
     runs-on: ubuntu-latest
+    # A job that hangs holds a runner for hours. The lint does not need that
+    # long: the job fails instead of waiting.
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -97,6 +100,9 @@ jobs:
   test:
     name: test (${{ matrix.go }}, ${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    # A job that hangs holds a runner for hours. The test suite does not need
+    # that long: the job fails instead of waiting.
+    timeout-minutes: 30
     defaults:
       run:
         # The default shell on Windows is PowerShell, which does not hand
@@ -152,6 +158,9 @@ jobs:
   build:
     name: build
     runs-on: ubuntu-latest
+    # A job that hangs holds a runner for hours. The build does not need that
+    # long: the job fails instead of waiting.
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -192,6 +201,9 @@ jobs:
   govulncheck:
     name: govulncheck
     runs-on: ubuntu-latest
+    # A job that hangs holds a runner for hours. The scan does not need that
+    # long: the job fails instead of waiting.
+    timeout-minutes: 15
     steps:
       # The action checks out the repository itself and installs
       # golang.org/x/vuln/cmd/govulncheck.
