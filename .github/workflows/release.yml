@@ -115,6 +115,34 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Turn a published release back into a draft
+        # GoReleaser only looks for a draft release (see `use_existing_draft`
+        # in .goreleaser.yaml), so a release that was already published
+        # cannot be updated by a repeated run of this workflow: the run
+        # fails with "tag_name already exists".
+        #
+        # The release is turned back into a draft before GoReleaser runs, so
+        # that a repeated run updates the release instead of failing. The
+        # `publish` job publishes it again once every artefact is in place.
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          # A draft release has no tag yet, so the API does not find it by
+          # its tag and the command fails. There is nothing to restore then:
+          # the release is a draft already, or it does not exist yet.
+          if ! draft="$(gh release view "${TAG}" --repo "${GITHUB_REPOSITORY}" --json isDraft --jq '.isDraft' 2>/dev/null)"; then
+            echo "The release ${TAG} is not published: there is nothing to restore"
+            exit 0
+          fi
+          if [ "${draft}" = "true" ]; then
+            echo "The release ${TAG} is a draft already"
+            exit 0
+          fi
+          gh release edit "${TAG}" --draft=true --repo "${GITHUB_REPOSITORY}"
+          echo "Turned the published release ${TAG} back into a draft"
+
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7.3.0
         with:
