@@ -1,0 +1,107 @@
+# Continuous integration for awesomegen.
+#
+# Design notes
+# ------------
+# * `pull_request_target` is deliberately NOT used: it runs with a write
+#   scoped token and would let a pull request execute code with write access
+#   to the repository. Every job below checks out untrusted pull-request code
+#   with a read-only token only.
+# * The top level `permissions` block grants `contents: read` and nothing
+#   else. No job in this workflow needs to escalate, so none of them does.
+# * Every third-party action is pinned to a full 40 character commit SHA.
+#   The human readable version lives in the comment next to the pin, so
+#   dependabot can still bump it and a reviewer can tell what the pin is.
+# * No secret is ever echoed. The only credential in play is the read-only
+#   `GITHUB_TOKEN` that GitHub provides automatically, and it is passed
+#   through `env` rather than being interpolated into a shell command.
+
+name: ci
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Lowest Go version the module supports. Keep in sync with the `go`
+  # directive in go.mod.
+  GO_MIN_VERSION: '1.26.x'
+
+jobs:
+  test:
+    name: test (${{ matrix.go }}, ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        # The default shell on Windows is PowerShell, which does not hand
+        # the argument of "-coverprofile=coverage.out" to the go command
+        # unchanged: it splits it, and ".out" is then read as a package
+        # pattern. Git Bash passes the argument on as it is, so that the
+        # matrix runs the very same command on every platform.
+        shell: bash
+    strategy:
+      fail-fast: false
+      matrix:
+        # Oldest supported Go version and the current one.
+        go: ['1.26.x', '1.27.x']
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ matrix.go }}
+          check-latest: true
+
+      - name: gofmt
+        run: |
+          set -euo pipefail
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "::error::The following files are not gofmt'ed:"
+            echo "$unformatted"
+            echo "::error::Run 'make fmt' to fix them."
+            exit 1
+          fi
+
+      - name: go vet
+        run: go vet ./...
+
+      # The race detector needs cgo and a C compiler. GitHub's Linux and
+      # macOS images ship one; the Windows image does not guarantee a
+      # compiler on PATH, so Windows runs the suite without -race.
+      - name: Test with race detector
+        if: runner.os != 'Windows'
+        run: go test -race -coverprofile=coverage.out ./...
+
+      - name: Test
+        if: runner.os == 'Windows'
+        run: go test -coverprofile=coverage.out ./...
+
+      - name: Coverage summary
+        if: runner.os != 'Windows'
+        run: go tool cover -func=coverage.out
+
+      - name: Upload coverage profile
+        # Upload once, from the canonical Linux job, to avoid several jobs
+        # racing for the same artifact name.
+        if: runner.os == 'Linux' && matrix.go == '1.26.x'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: coverage
+          path: coverage.out
+          if-no-files-found: error
+          retention-days: 14
