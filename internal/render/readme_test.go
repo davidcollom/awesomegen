@@ -323,6 +323,49 @@ func TestMarkdownRendersLinkOnlyListWhenGroupedByTopic(t *testing.T) {
 	require.Contains(t, md, "- [The Go Blog](https://go.dev/blog/)")
 }
 
+// TestMarkdownMatchesTagAliasesCaseInsensitively makes sure a topic is
+// aliased no matter how the name of the alias is written.
+//
+// A topic is lowercased before it is looked up in the map, so an alias whose
+// name is not lowercase could never match. The name is normalised, so that
+// the alias is found.
+func TestMarkdownMatchesTagAliasesCaseInsensitively(t *testing.T) {
+	topicGroupingFlat := config.TopicGroupingModeFlat
+	md, err := Markdown(config.List{
+		Title:             "Aliased",
+		GroupByTopic:      true,
+		TopicGroupingMode: &topicGroupingFlat,
+		TagAliases:        map[string]string{"Machine-Learning": "AI"},
+		Categories: []*config.Category{{Name: "Repositories", Items: []*config.Item{
+			{GHMeta: &github.RepoMeta{
+				FullName: "repo/one",
+				URL:      "https://github.com/repo/one",
+				Topics:   []string{"machine-learning"},
+			}},
+		}}},
+	})
+	require.NoError(t, err)
+	// The topic is rendered under its canonical name, not under the name
+	// the alias was written with.
+	require.Contains(t, md, "### Ai")
+	require.NotContains(t, md, "Machine-Learning")
+}
+
+// TestMarkdownRejectsAmbiguousTagAliases makes sure an alias map that names
+// the same alias twice with different targets is reported instead of being
+// resolved by chance.
+func TestMarkdownRejectsAmbiguousTagAliases(t *testing.T) {
+	_, err := Markdown(config.List{
+		Title:      "Ambiguous",
+		TagAliases: map[string]string{"Go": "golang", "go": "gopher"},
+		Categories: []*config.Category{{Name: "Repositories", Items: []*config.Item{
+			{GHMeta: &github.RepoMeta{FullName: "repo/one", URL: "https://github.com/repo/one"}},
+		}}},
+	})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "they point at different tags")
+}
+
 // TestMarkdownAllocatesAnchorsAcrossTheDocument makes sure the anchors are
 // numbered across the whole document: GitHub assigns them to every heading,
 // including the title and the table of contents.

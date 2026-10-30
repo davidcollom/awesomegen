@@ -32,6 +32,11 @@ VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 COMMIT  ?= $(shell git rev-parse HEAD 2>/dev/null || echo unknown)
 DATE    ?= $(shell git show -s --format=%cI HEAD 2>/dev/null || echo unknown)
 
+# The flags that are stamped into the binary. Both "build" and "install" use
+# them, so that the installed binary reports the same version, commit and
+# commit date as the one in bin/.
+LDFLAGS := -s -w -X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.date=$(DATE)
+
 # Pinned tool versions. Bump them together with the corresponding configuration.
 GOLANGCI_LINT_VERSION ?= v2.15.0
 GORELEASER_VERSION    ?= v2.19.0
@@ -45,12 +50,12 @@ help: ## Show this help
 build: ## Build the CLI into bin/
 	@mkdir -p $(BIN_DIR)
 	CGO_ENABLED=0 $(GO) build -trimpath \
-		-ldflags "-s -w -X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.date=$(DATE)" \
+		-ldflags "$(LDFLAGS)" \
 		-o $(BIN_DIR)/$(BINARY) $(CMD)
 
 .PHONY: install
 install: ## Install the CLI into the Go bin directory
-	$(GO) install $(CMD)
+	CGO_ENABLED=0 $(GO) install -trimpath -ldflags "$(LDFLAGS)" $(CMD)
 
 .PHONY: test
 test: ## Run the unit tests

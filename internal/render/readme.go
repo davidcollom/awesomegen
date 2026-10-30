@@ -49,6 +49,15 @@ func Markdown(list config.List) (string, error) {
 	var buf strings.Builder
 	doc := md.NewMarkdown(&buf)
 
+	// The tag aliases are matched case-insensitively. A configuration that
+	// was read from a file is already normalised by the loader; a list that
+	// was built in code is normalised here, so that both behave the same.
+	aliases, err := config.NormaliseTagAliases(list.TagAliases)
+	if err != nil {
+		return "", fmt.Errorf("render markdown: %w", err)
+	}
+	list.TagAliases = aliases
+
 	// GitHub assigns an anchor to every heading and numbers the duplicates
 	// across the whole document, so the anchors are allocated in the order
 	// the headings appear.

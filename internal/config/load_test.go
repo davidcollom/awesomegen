@@ -210,6 +210,67 @@ func TestLoadAcceptsSafeOutput(t *testing.T) {
 	}
 }
 
+// TestLoadNormalisesTagAliases makes sure the aliases are matched
+// case-insensitively.
+//
+// A topic is lowercased before it is looked up in the map, so an alias whose
+// name is not lowercase could never match. The names and the targets of the
+// aliases are normalised when the configuration is read, so that the aliases
+// behave the way the documentation describes them.
+func TestLoadNormalisesTagAliases(t *testing.T) {
+	path := writeConfig(t, "version: 1\nuser: d\nlists:\n  - slug: s\n    title: T\n    tag_aliases:\n      Machine-Learning: AI\n      \"  Go  \": \"  Golang  \"\n")
+	cfg, err := config.Load(path)
+	require.NoError(t, err)
+	require.Equal(t, map[string]string{
+		"machine-learning": "ai",
+		"go":               "golang",
+	}, cfg.Lists[0].TagAliases)
+}
+
+// TestLoadRejectsBadTagAliases makes sure an alias map that cannot be applied
+// unambiguously is reported instead of being resolved by chance.
+func TestLoadRejectsBadTagAliases(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+		want string
+	}{
+		{
+			name: "empty alias name",
+			body: "version: 1\nuser: d\nlists:\n  - slug: s\n    title: T\n    tag_aliases:\n      \"\": ai\n",
+			want: "the name of an alias must not be empty",
+		},
+		{
+			name: "empty alias target",
+			body: "version: 1\nuser: d\nlists:\n  - slug: s\n    title: T\n    tag_aliases:\n      ai: \"  \"\n",
+			want: "must not point at an empty tag",
+		},
+		{
+			name: "two names for the same alias with different targets",
+			body: "version: 1\nuser: d\nlists:\n  - slug: s\n    title: T\n    tag_aliases:\n      Go: golang\n      go: gopher\n",
+			want: "they point at different tags",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := config.Load(writeConfig(t, tt.body))
+			require.Error(t, err)
+			require.Contains(t, err.Error(), tt.want)
+		})
+	}
+}
+
+// TestLoadAcceptsDuplicateAliasesWithTheSameTarget makes sure a redundant
+// alias is not reported as an error: two names that only differ in case and
+// that point at the same tag are not ambiguous.
+func TestLoadAcceptsDuplicateAliasesWithTheSameTarget(t *testing.T) {
+	path := writeConfig(t, "version: 1\nuser: d\nlists:\n  - slug: s\n    title: T\n    tag_aliases:\n      Go: golang\n      go: Golang\n")
+	cfg, err := config.Load(path)
+	require.NoError(t, err)
+	require.Equal(t, map[string]string{"go": "golang"}, cfg.Lists[0].TagAliases)
+}
+
 func TestSeedReposPreservesConfiguredCategories(t *testing.T) {
 	l := config.List{
 		Categories: []*config.Category{

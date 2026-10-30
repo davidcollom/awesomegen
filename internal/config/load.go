@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"golang.org/x/text/language"
@@ -342,9 +343,60 @@ func (c *Config) applyDefaults() error {
 		if l.Locale == "" {
 			l.Locale = "en-GB"
 		}
+		aliases, err := NormaliseTagAliases(l.TagAliases)
+		if err != nil {
+			return fmt.Errorf("lists[%d]: %w", i, err)
+		}
+		l.TagAliases = aliases
 		l.inferItemTypes()
 	}
 	return nil
+}
+
+// NormaliseTagAliases returns a copy of an alias map whose names and targets
+// are trimmed and lowercased.
+//
+// A topic is lowercased before it is looked up in the map, so an alias whose
+// name is not lowercase could never match. The names are normalised here, so
+// that the aliases are matched case-insensitively, as documented.
+//
+// The names are visited in sorted order, so that two names that normalise to
+// the same alias always resolve to the same target and the error message of
+// an ambiguous map is the same every time.
+func NormaliseTagAliases(aliases map[string]string) (map[string]string, error) {
+	if len(aliases) == 0 {
+		return nil, nil
+	}
+	names := make([]string, 0, len(aliases))
+	for name := range aliases {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	out := make(map[string]string, len(aliases))
+	origin := make(map[string]string, len(aliases))
+	for _, name := range names {
+		key := strings.ToLower(strings.TrimSpace(name))
+		if key == "" {
+			return nil, fmt.Errorf("tag_aliases: the name of an alias must not be empty")
+		}
+		target := strings.ToLower(strings.TrimSpace(aliases[name]))
+		if target == "" {
+			return nil, fmt.Errorf("tag_aliases: the alias %q must not point at an empty tag", name)
+		}
+		if previous, ok := out[key]; ok {
+			// Two names that only differ in case are the same alias.
+			// That is only a problem when they point at different tags,
+			// because then there is no answer to which one wins.
+			if previous != target {
+				return nil, fmt.Errorf("tag_aliases: %q and %q both name the alias %q, but they point at different tags", origin[key], name, key)
+			}
+			continue
+		}
+		out[key] = target
+		origin[key] = name
+	}
+	return out, nil
 }
 
 // inferItemTypes fills in the type of items that do not declare one, so an
