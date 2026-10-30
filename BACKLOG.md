@@ -22,7 +22,7 @@ Status: `open` unless stated otherwise.
 |---|---|
 | [#106](https://github.com/davidcollom/awesomegen/issues/106) | The HTTP path of the GitHub client is not covered by a test - `New`, `GetRepo` and `IsNotFound` are at 0 % |
 | [#107](https://github.com/davidcollom/awesomegen/issues/107) | There is no end-to-end test of the command line interface - nothing runs the scrape, the enrichment, the rendering and the write together |
-| [#108](https://github.com/davidcollom/awesomegen/issues/108) | Nothing fails when the coverage drops - the profile is uploaded and never read |
+| [#108](https://github.com/davidcollom/awesomegen/issues/108) | Nothing fails when the coverage drops - the profile is uploaded and the summary is printed, but no minimum is enforced |
 | [#109](https://github.com/davidcollom/awesomegen/issues/109) | The Star List page shape is only checked by a fixture, so a change of the markup of GitHub is noticed by a user and not by the build |
 | [#116](https://github.com/davidcollom/awesomegen/issues/116) | The exit code of the command keeps the `exitAfterDefer` check of `gocritic` disabled |
 
@@ -37,6 +37,12 @@ Status: `open` unless stated otherwise.
 | [#115](https://github.com/davidcollom/awesomegen/issues/115) | There is no `CHANGELOG.md`, so the history of the project only lives on the release page |
 | [#86](https://github.com/davidcollom/awesomegen/issues/86) | The documented `docker run` command cannot write the README |
 
+## P2 - lower priority, but actionable
+
+| Issue | What is missing |
+|---|---|
+| [#110](https://github.com/davidcollom/awesomegen/issues/110) | There is no scheduled run of the pipeline, so a change of Go or of the GitHub API is noticed by a user and not by the build |
+
 ## P2 - ideas that need a decision first
 
 ### macOS binaries are not notarized
@@ -45,15 +51,6 @@ because it needs a paid Apple Developer account, a "Developer ID
 Application" certificate and an App Store Connect API key.
 * Decide whether to buy the membership and enable the block, or to state
   explicitly in the README that the macOS binaries are unsigned.
-
-### The published container image is not documented
-The image is pushed to `ghcr.io/davidcollom/awesomegen` with the tags
-`vX.Y.Z`, `vX`, `vX.Y` and `latest`, but the README only shows the CLI and
-the Action.
-* Document the `docker run` invocation, including that the image runs as a
-  non-root user and therefore cannot write into a mounted directory - which
-  is exactly why the GitHub Action is a composite action and not a Docker
-  action. The command that is documented today is wrong, see #86.
 
 ### Homebrew, Scoop and Nix packaging
 The release already publishes binaries for macOS and Windows.
