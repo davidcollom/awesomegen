@@ -312,3 +312,23 @@ func TestMarkdownSanitizesSectionHeadings(t *testing.T) {
 	// the same as the anchor GitHub would generate for it.
 	require.Contains(t, md, "](#clickhttpsevilexamplepwn)")
 }
+
+// TestMarkdownUsesUnixLineEndings makes sure the document does not depend on
+// the platform it was rendered on.
+//
+// The Markdown library writes the line feed of the platform it runs on, so
+// the document would end up with carriage returns on Windows. The line
+// endings are normalised, so that the same list produces the same file
+// everywhere and the README does not change when it is regenerated on
+// another platform.
+func TestMarkdownUsesUnixLineEndings(t *testing.T) {
+	md, err := Markdown(config.List{
+		Title: "Line endings",
+		Categories: []*config.Category{{Name: "Repositories", Items: []*config.Item{
+			{GHMeta: &github.RepoMeta{FullName: "a/one", URL: "https://github.com/a/one"}},
+		}}},
+	})
+	require.NoError(t, err)
+	require.NotContains(t, md, "\r", "the document must not contain carriage returns")
+	require.Contains(t, md, "\n")
+}

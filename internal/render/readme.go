@@ -96,7 +96,12 @@ func Markdown(list config.List) (string, error) {
 		return "", fmt.Errorf("render markdown: %w", err)
 	}
 
-	return buf.String(), nil
+	// The Markdown library writes the line feed of the platform it runs on,
+	// so the document would end up with carriage returns on Windows. The
+	// line endings are normalised, so that the same list produces the same
+	// README everywhere and the file does not change when it is regenerated
+	// on another platform.
+	return strings.ReplaceAll(buf.String(), "\r\n", "\n"), nil
 }
 
 // buildSections turns the list into the tree of sections that is rendered.

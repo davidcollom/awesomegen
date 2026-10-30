@@ -3,6 +3,7 @@ package config_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -128,7 +129,7 @@ func TestLoadRejectsBadValues(t *testing.T) {
 		},
 		{
 			name: "absolute output",
-			body: "version: 1\nuser: d\nlists:\n  - slug: s\n    title: T\n    output: /etc/passwd\n",
+			body: "version: 1\nuser: d\nlists:\n  - slug: s\n    title: T\n    output: '%ABS%'\n",
 			want: "must be a relative path",
 		},
 		{
@@ -155,11 +156,25 @@ func TestLoadRejectsBadValues(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := config.Load(writeConfig(t, tt.body))
+			body := strings.ReplaceAll(tt.body, "%ABS%", absoluteOutput(t))
+			_, err := config.Load(writeConfig(t, body))
 			require.Error(t, err)
 			require.Contains(t, err.Error(), tt.want)
 		})
 	}
+}
+
+// absoluteOutput returns a path that is absolute on every platform and that
+// carries an allowed extension.
+//
+// A fixed path would not do: "/etc/passwd" is not absolute on Windows, and
+// the Windows build of the test suite would then fail on the check for the
+// extension instead of the one for the absolute path. The extension is
+// allowed so that the check for the absolute path is the one that fires.
+func absoluteOutput(t *testing.T) string {
+	t.Helper()
+
+	return filepath.Join(t.TempDir(), "README.md")
 }
 
 func TestLoadAcceptsSafeOutput(t *testing.T) {
