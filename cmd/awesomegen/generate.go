@@ -126,6 +126,15 @@ func runGenerateWith(cmd *cobra.Command, opts *options, gen *generator) error {
 			// run: a single deleted repository should not stop the whole list
 			// from being regenerated.
 			log.Error(err, "some repository lookups failed", "failed", lookupErr.Failed, "total", lookupErr.Total)
+			// Every lookup failed, though. The repositories are missing from
+			// the list, and rendering it would replace the existing README
+			// with what is left - the links alone, if there are any. The run
+			// is stopped instead, so that an expired token or a rate limit
+			// cannot empty a curated list.
+			if lookupErr.AllFailed() {
+				return fmt.Errorf("every repository lookup failed (%d of %d): refusing to overwrite %s with an incomplete README",
+					lookupErr.Failed, lookupErr.Total, outputs[i])
+			}
 		}
 
 		// 3) render markdown
