@@ -28,13 +28,13 @@ func newVersionCommand() *cobra.Command {
 			var b strings.Builder
 			fmt.Fprintf(&b, "awesomegen %s\n", version)
 			if commit != "" {
-				fmt.Fprintf(&b, "commit:     %s\n", commit)
+				fmt.Fprintf(&b, "commit:      %s\n", commit)
 			}
 			if date != "" {
-				fmt.Fprintf(&b, "built:      %s\n", date)
+				fmt.Fprintf(&b, "commit date: %s\n", date)
 			}
-			fmt.Fprintf(&b, "go:         %s\n", runtime.Version())
-			fmt.Fprintf(&b, "platform:   %s/%s\n", runtime.GOOS, runtime.GOARCH)
+			fmt.Fprintf(&b, "go:          %s\n", runtime.Version())
+			fmt.Fprintf(&b, "platform:    %s/%s\n", runtime.GOOS, runtime.GOARCH)
 			_, err := io.WriteString(cmd.OutOrStdout(), b.String())
 			return err
 		},

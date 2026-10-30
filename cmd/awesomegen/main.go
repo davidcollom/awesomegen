@@ -19,7 +19,10 @@ var version = "dev"
 // commit is the git commit the binary was built from.
 var commit = ""
 
-// date is the build date of the binary.
+// date is the date of the commit the binary was built from.
+//
+// It is the date of the commit rather than the date of the build, so that
+// two builds of the same commit produce the same binary.
 var date = ""
 
 // loggerKey is the key the logger is stored under in the command context.

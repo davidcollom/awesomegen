@@ -58,7 +58,6 @@ RUN CGO_ENABLED=0 GOOS="${TARGETOS:-linux}" GOARCH="${TARGETARCH:-amd64}" \
     go build -trimpath \
     -ldflags "-s -w -X main.version=${VERSION} -X main.commit=${COMMIT} -X main.date=${DATE}" \
     -o /out/awesomegen ./cmd/awesomegen
-    -o /out/awesomegen ./cmd/awesomegen
 
 # ---- runtime stage ----------------------------------------------------------
 # Pinned by digest, see the note above on how to refresh it.

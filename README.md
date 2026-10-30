@@ -220,6 +220,8 @@ Several sources can be given for one list; their repositories are merged and de-
 A curated category with a link item:
 
 ```yaml
+version: 1
+user: "davidcollom"
 lists:
   - slug: "tools"
     title: "Awesome Tools"
@@ -232,6 +234,9 @@ lists:
           - repo: "cli/cli"
             notes: "The GitHub CLI"
 ```
+
+The list has no `sources` of its own, so it uses the top level `user` and the
+`slug` of the list as a single source.
 
 A repository that appears in more than one category is rendered once, in the
 first category that holds it.
@@ -324,18 +329,21 @@ awesomegen schema > config-schema.json
 
 ### `awesomegen version`
 
-Prints the version, the commit and the build date that were stamped into the
-binary, the Go version and the platform. The commit and the date are left out
-when the binary was built without them, for example with `go run`:
+Prints the version, the commit and the date of the commit that were stamped
+into the binary, the Go version and the platform. The commit and the date are
+left out when the binary was built without them, for example with `go run`:
 
 ```console
 $ awesomegen version
 awesomegen 1.2.3
-commit:     6f1c2d0a9b8e7f6a5b4c3d2e1f0a9b8c7d6e5f4a
-built:      2026-01-31T09:15:00Z
-go:         go1.26.0
-platform:   linux/amd64
+commit:      6f1c2d0a9b8e7f6a5b4c3d2e1f0a9b8c7d6e5f4a
+commit date: 2026-01-31T09:15:00Z
+go:          go1.26.0
+platform:    linux/amd64
 ```
+
+The date is the date of the commit rather than the date of the build, so that
+two builds of the same commit produce the same binary.
 
 ### Authentication
 
