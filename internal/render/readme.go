@@ -259,15 +259,26 @@ func collectItems(list config.List) []*config.Item {
 }
 
 // itemKey returns a stable identity for an item, used to de-duplicate.
+//
+// The identity follows the type of the item: an entry that is a link stays
+// a link even when it names a repository, so it cannot take the identity of
+// that repository away from the entry that is the repository itself.
 func itemKey(it *config.Item) string {
-	if it.GHMeta != nil && it.GHMeta.FullName != "" {
-		return "repo:" + it.GHMeta.FullName
+	if it == nil {
+		return ""
 	}
-	if it.Repo != "" {
-		return "repo:" + it.Repo
-	}
-	if it.URL != "" {
-		return "link:" + it.URL
+	switch {
+	case it.IsGitHub():
+		if it.GHMeta != nil && it.GHMeta.FullName != "" {
+			return "repo:" + it.GHMeta.FullName
+		}
+		if it.Repo != "" {
+			return "repo:" + it.Repo
+		}
+	case it.IsLink():
+		if it.URL != "" {
+			return "link:" + it.URL
+		}
 	}
 	return ""
 }

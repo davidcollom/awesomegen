@@ -533,3 +533,30 @@ func TestMarkdownPreservesCurationOrder(t *testing.T) {
 	require.Less(t, strings.Index(md, "z/last"), strings.Index(md, "a/first"),
 		"the curation order must be preserved")
 }
+
+// TestMarkdownKeepsTheRepositoryWhenALinkNamesIt makes sure a link that
+// names a repository does not take the repository away.
+//
+// The identity of an entry follows its type: a link is a link even when it
+// names a repository, so it cannot suppress the entry that is the
+// repository itself.
+func TestMarkdownKeepsTheRepositoryWhenALinkNamesIt(t *testing.T) {
+	md, err := Markdown(config.List{
+		Title: "Links and repositories",
+		Categories: []*config.Category{
+			{Name: "Documentation", Items: []*config.Item{
+				{Type: config.ItemLink, Repo: "a/one", URL: "https://example.com/docs", Title: "The documentation"},
+			}},
+			{Name: "Repositories", Items: []*config.Item{
+				{GHMeta: &github.RepoMeta{FullName: "a/one", URL: "https://github.com/a/one"}},
+			}},
+		},
+	})
+	require.NoError(t, err)
+
+	// The link is rendered.
+	require.Contains(t, md, "- [The documentation](https://example.com/docs)")
+	// The repository is rendered as well: the link did not take its
+	// identity away.
+	require.Contains(t, md, "- [a/one](https://github.com/a/one)")
+}

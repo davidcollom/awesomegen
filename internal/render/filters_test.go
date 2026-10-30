@@ -142,3 +142,38 @@ func TestEnrichAndFilterStaleMonthsZeroNeverStale(t *testing.T) {
 	require.Len(t, out.Categories[0].Items, 1,
 		"stale_months: 0 disables the staleness check")
 }
+
+// TestLookupErrorAllFailed makes sure a list whose repositories all failed
+// to load is told apart from a list that only holds links.
+//
+// The first one must not be rendered: the repositories are missing, and
+// writing what is left would empty a curated README. The second one is a
+// list of links, and it is rendered as it is.
+func TestLookupErrorAllFailed(t *testing.T) {
+	tests := []struct {
+		name string
+		err  *render.LookupError
+		want bool
+	}{
+		{
+			name: "every lookup failed",
+			err:  &render.LookupError{Failed: 3, Total: 3},
+			want: true,
+		},
+		{
+			name: "some lookups failed",
+			err:  &render.LookupError{Failed: 1, Total: 3},
+			want: false,
+		},
+		{
+			name: "the list holds links only",
+			err:  &render.LookupError{Failed: 0, Total: 0},
+			want: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, tt.err.AllFailed())
+		})
+	}
+}

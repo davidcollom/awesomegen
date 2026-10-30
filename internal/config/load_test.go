@@ -297,6 +297,19 @@ func TestLoadRejectsInvalidItems(t *testing.T) {
 			body: "version: 1\nuser: d\nlists:\n  - slug: s\n    title: T\n    categories:\n      - name: C\n        items:\n          - repo: not-a-repository\n",
 			want: "repo: invalid owner/repo format",
 		},
+		{
+			// The type is inferred from the raw value, so a repository
+			// of " " would turn the entry into a lookup that always
+			// fails and the entry would be dropped without a word.
+			name: "item without a type and with a blank repository",
+			body: "version: 1\nuser: d\nlists:\n  - slug: s\n    title: T\n    categories:\n      - name: C\n        items:\n          - repo: \" \"\n            url: https://example.com\n",
+			want: "repo: invalid owner/repo format",
+		},
+		{
+			name: "item without a type and with a blank url",
+			body: "version: 1\nuser: d\nlists:\n  - slug: s\n    title: T\n    categories:\n      - name: C\n        items:\n          - url: \" \"\n",
+			want: "url: must not be blank",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -32,6 +32,18 @@ func (e *LookupError) Error() string {
 
 func (e *LookupError) Unwrap() error { return e.Err }
 
+// AllFailed reports whether every repository lookup of the list failed.
+//
+// A list whose repositories all failed to load cannot be rendered: the
+// entries are missing, and writing what is left - the curated links alone,
+// if there are any - would empty a README that is still worth keeping.
+//
+// A list without a single repository is not a failure: it holds links only,
+// and those are rendered.
+func (e *LookupError) AllFailed() bool {
+	return e != nil && e.Total > 0 && e.Failed == e.Total
+}
+
 // EnrichAndFilter enriches every GitHub item in the list with repository
 // metadata and drops the items that fail the configured filters.
 //

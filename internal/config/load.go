@@ -190,12 +190,20 @@ func (l *List) validate(idx int, configUser string) error {
 				// would otherwise only be detected when the lookup
 				// failed, and the entry would be dropped from the
 				// list without a word.
+				//
+				// The raw values are inspected and not the trimmed
+				// ones: the inference uses the raw value as well, so
+				// a repository of " " would turn the entry into a
+				// lookup that always fails, and the entry would be
+				// dropped from the list without a word.
 				switch {
-				case strings.TrimSpace(it.Repo) != "":
+				case it.Repo != "":
 					if _, _, err := github.SplitOwnerRepo(it.Repo); err != nil {
 						return fmt.Errorf("lists[%d].categories[%d].items[%d].repo: %w", idx, ci, ii, err)
 					}
 				case strings.TrimSpace(it.URL) != "":
+				case it.URL != "":
+					return fmt.Errorf("lists[%d].categories[%d].items[%d].url: must not be blank", idx, ci, ii)
 				default:
 					return fmt.Errorf("lists[%d].categories[%d].items[%d]: repo: or url: is required", idx, ci, ii)
 				}
