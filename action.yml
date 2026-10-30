@@ -61,6 +61,15 @@ runs:
           exit 1
         fi
 
+        # The version ends up in the name of the archive that is downloaded
+        # and in the URL it is downloaded from. Only a version that looks
+        # like a release tag is accepted, so that a mistyped input cannot
+        # reach the shell as a path or as a command.
+        if ! printf '%s' "${version}" | grep -Eq '^v?[0-9]+(\.[0-9]+){0,2}(-[0-9A-Za-z][0-9A-Za-z.-]*)?$'; then
+          echo "::error::The version ${version} is not a release version"
+          exit 1
+        fi
+
         echo "Using awesomegen ${version}"
         echo "version=${version}" >> "${GITHUB_OUTPUT}"
 
@@ -149,7 +158,10 @@ runs:
             elif tar --version 2>/dev/null | grep -q bsdtar; then
               tar -xf "${archive}"
             else
-              powershell -NoProfile -Command "Expand-Archive -LiteralPath '${archive}' -DestinationPath '.' -Force"
+              # The path of the archive is passed as an argument instead of
+              # being interpolated into the command, so that it cannot be
+              # read as part of the command itself.
+              powershell -NoProfile -Command 'Expand-Archive -LiteralPath $args[0] -DestinationPath "." -Force' "${archive}"
             fi
             ;;
           *.tar.gz)
