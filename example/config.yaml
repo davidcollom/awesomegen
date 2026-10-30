@@ -3,13 +3,13 @@ user: "davidcollom"
 lists:
   - slug: "tools" # taken from /stars/<user>/lists/<slug>
     title: "Awesome Tools"
-    tagline: "A currated list Day to Day tools I find super awesome and helpful"
+    tagline: "A curated list of the day-to-day tools I find super awesome and helpful"
     min_stars: 0
     stale_months: 36
     badges:
       - "https://img.shields.io/badge/awesome-yes-brightgreen"
     group_by_topic: true
-    topic_grouping_mode: "flat"   # or "flat"
+    topic_grouping_mode: "flat"   # or "nested"
     topic_fallback: "misc"
     stars_format: "locale"           # or "compact" or "none"
     locale: "en-GB"
