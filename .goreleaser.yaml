@@ -54,6 +54,8 @@ builds:
     ldflags:
       - -s -w
       - -X main.version={{.Version}}
+      - -X main.commit={{.FullCommit}}
+      - -X main.date={{.Date}}
     # Reproducible builds: the timestamp of the module cache is pinned to the
     # commit time, so two builds of the same commit produce identical
     # binaries.

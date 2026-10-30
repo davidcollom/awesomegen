@@ -24,6 +24,10 @@ SCHEMA_FILE := config-schema.json
 
 # The version is stamped into the binary. Override it with `make build VERSION=v1.2.3`.
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+# The commit and the build date are stamped into the binary as well, so that
+# "awesomegen version" reports where the running binary came from.
+COMMIT  ?= $(shell git rev-parse HEAD 2>/dev/null || echo unknown)
+DATE    ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 
 # Pinned tool versions. Bump them together with the corresponding configuration.
 GOLANGCI_LINT_VERSION ?= v2.15.0
@@ -37,7 +41,9 @@ help: ## Show this help
 .PHONY: build
 build: ## Build the CLI into bin/
 	@mkdir -p $(BIN_DIR)
-	CGO_ENABLED=0 $(GO) build -trimpath -ldflags "-s -w -X main.version=$(VERSION)" -o $(BIN_DIR)/$(BINARY) $(CMD)
+	CGO_ENABLED=0 $(GO) build -trimpath \
+		-ldflags "-s -w -X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.date=$(DATE)" \
+		-o $(BIN_DIR)/$(BINARY) $(CMD)
 
 .PHONY: install
 install: ## Install the CLI into the Go bin directory

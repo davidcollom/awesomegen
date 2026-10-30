@@ -49,11 +49,15 @@ COPY . .
 ARG TARGETOS
 ARG TARGETARCH
 ARG VERSION=dev
+ARG COMMIT=unknown
+ARG DATE=unknown
 
 # CGO is disabled, so the binary is fully static and runs on a base image
 # that has no C library at all.
 RUN CGO_ENABLED=0 GOOS="${TARGETOS:-linux}" GOARCH="${TARGETARCH:-amd64}" \
-    go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" \
+    go build -trimpath \
+    -ldflags "-s -w -X main.version=${VERSION} -X main.commit=${COMMIT} -X main.date=${DATE}" \
+    -o /out/awesomegen ./cmd/awesomegen
     -o /out/awesomegen ./cmd/awesomegen
 
 # ---- runtime stage ----------------------------------------------------------

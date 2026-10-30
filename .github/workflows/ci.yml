@@ -221,7 +221,7 @@ jobs:
             fi
             echo "Building ${goos}/${goarch}"
             CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" \
-              go build -trimpath -ldflags "-s -w -X main.version=ci" -o "$out" ./cmd/awesomegen
+              go build -trimpath -ldflags "-s -w -X main.version=ci -X main.commit=${GITHUB_SHA}" -o "$out" ./cmd/awesomegen
           done
 
       - name: Smoke test the linux/amd64 binary
