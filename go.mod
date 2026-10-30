@@ -1,6 +1,13 @@
 module github.com/davidcollom/awesomegen
 
-go 1.26.0
+// The one Go version this project is built and tested with.
+//
+// Every workflow reads the version from this directive, so that the
+// version of the toolchain is named in exactly one place. The patch
+// version is part of it on purpose: the patch releases of a line carry
+// the fixes of the standard library, and a build with a toolchain that
+// has them is the one that should be released.
+go 1.27.3
 
 require (
 	github.com/PuerkitoBio/goquery v1.13.0

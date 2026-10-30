@@ -61,20 +61,20 @@ jobs:
 
       - name: Set up Go
         # The version comes from the `go` directive of go.mod, so the lint
-        # always runs with the oldest Go version the module supports and
+        # always runs with the Go version the module is built with and
         # never drifts away from it.
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
 
       - name: Check the Go version
-        # The lint has to run with the oldest supported Go version: a code
-        # change that only builds with a newer toolchain is a breaking
-        # change for everybody who has the older one.
+        # Every job of the workflow has to run with the Go version that
+        # go.mod names: a build with another toolchain says nothing about
+        # the one the release is made with.
         #
         # setup-go takes the version from the `toolchain` directive of go.mod
         # when there is one, and from the `go` directive otherwise. A
-        # `toolchain` directive would move the CI to a newer version, so it
+        # `toolchain` directive would move the CI to another version, so it
         # is reported here instead of being ignored.
         run: |
           set -euo pipefail
@@ -86,14 +86,14 @@ jobs:
             exit 1
           fi
           if [ -n "${toolchain}" ]; then
-            echo "::error::go.mod pins the toolchain to Go ${toolchain}. The CI has to run with Go ${required}, the oldest version the module supports: remove the toolchain directive."
+            echo "::error::go.mod pins the toolchain to Go ${toolchain}. The CI has to run with Go ${required}, the version the module is built with: remove the toolchain directive."
             exit 1
           fi
           if [ "${installed}" != "go${required}" ]; then
             echo "::error::go.mod requires Go ${required}, but Go ${installed} is installed"
             exit 1
           fi
-          echo "Go ${installed} is the oldest version that go.mod supports"
+          echo "Go ${installed} is the version that go.mod requires"
 
       - name: gofmt
         run: |
@@ -125,7 +125,7 @@ jobs:
           version: ${{ env.GOLANGCI_LINT_VERSION }}
 
   test:
-    name: test (${{ matrix.go }}, ${{ matrix.os }})
+    name: test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     # A job that hangs holds a runner for hours. The test suite does not need
     # that long: the job fails instead of waiting.
@@ -141,13 +141,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # The oldest Go version the module supports and the current one.
-        #
-        # "1.26.0" is the exact version of the `go` directive in go.mod, not
-        # the latest patch of that line: a release that only builds with the
-        # newest patch of the oldest supported line is broken for everybody
-        # who has the first patch of it. Keep it in sync with go.mod.
-        go: ['1.26.0', '1.27.x']
+        # One Go version is supported, and it is the one that go.mod names.
+        # The version itself is not part of the matrix: it comes from go.mod
+        # in the step that sets up Go, so that it is named in one place
+        # only.
         os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
       - name: Checkout
@@ -156,10 +153,11 @@ jobs:
           persist-credentials: false
 
       - name: Set up Go
+        # The version comes from the `go` directive of go.mod, so that the
+        # tests always run with the version the module is built with.
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: ${{ matrix.go }}
-          check-latest: true
+          go-version-file: go.mod
 
       # The race detector needs cgo and a C compiler. GitHub's Linux and
       # macOS images ship one; the Windows image does not guarantee a
@@ -179,7 +177,7 @@ jobs:
       - name: Upload coverage profile
         # Upload once, from the canonical Linux job, to avoid several jobs
         # racing for the same artifact name.
-        if: runner.os == 'Linux' && matrix.go == '1.26.0'
+        if: runner.os == 'Linux'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: coverage
@@ -252,11 +250,11 @@ jobs:
       - name: Run govulncheck
         uses: golang/govulncheck-action@032d45514ae346b1db93c04b0c90b841c370344f # v1.1.0
         with:
-          # The version comes from the `go` directive of go.mod, so the scan
-          # always runs with the oldest Go version the module supports. The
-          # version input has to be empty for that: the action passes both
-          # to setup-go, and setup-go prefers the version input over the
-          # version file.
+          # The version comes from the `go` directive of go.mod, so that the
+          # scan looks at the standard library the artefacts are built
+          # with. The version input has to be empty for that: the action
+          # passes both to setup-go, and setup-go prefers the version input
+          # over the version file.
           go-version-input: ''
           go-version-file: go.mod
           go-package: ./...

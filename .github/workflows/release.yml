@@ -39,15 +39,6 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  # The Go version that builds the release. It is pinned to an exact patch,
-  # so that the same commit always produces the same artefacts.
-  #
-  # The CI tests the oldest Go version the module supports and the newest
-  # patch of the current line (see .github/workflows/ci.yml). Bump this
-  # value when a new stable Go is released: the patch versions carry the
-  # fixes of the compiler and of the standard library, and a release should
-  # be built with a toolchain that has them.
-  GO_VERSION: '1.27.3'
   # The version of GoReleaser is pinned, so that a release is built with the
   # same tool every time. Keep it in sync with GORELEASER_VERSION in the
   # Makefile, which installs the same version for a local release.
@@ -93,12 +84,14 @@ jobs:
           persist-credentials: false
 
       - name: Set up Go
+        # The version comes from the `go` directive of go.mod, so that the
+        # release is built with the Go version the module names and the
+        # version is written down in one place only. The directive names
+        # an exact patch, so no lookup of the newest release happens here
+        # and the same commit always produces the same artefacts.
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          # The version is pinned to an exact patch (see the GO_VERSION
-          # variable above), so no lookup of the newest release happens
-          # here.
-          go-version: ${{ env.GO_VERSION }}
+          go-version-file: go.mod
 
       - name: Install syft
         # GoReleaser shells out to syft to produce the SBOMs. The download is

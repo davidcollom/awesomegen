@@ -15,9 +15,16 @@
 # Pinned by digest: a tag on its own is mutable and could be re-pointed at a
 # different base image at any time.
 #
+# The version of Go is the one that go.mod requires. A Dockerfile cannot read
+# the `go` directive of go.mod - the base image is named before anything is
+# copied into the build - so the version is written here as well. The digest
+# pins the image, so the two versions only drift apart when the directive of
+# go.mod is changed, and the build fails with a clear message when that
+# happens.
+#
 # To refresh the pin:
-#   docker buildx imagetools inspect golang:1.26-alpine --format '{{ .Manifest.Digest }}'
-FROM golang:1.26-alpine@sha256:a2012b4a1d1f9f7e9f44e0d39b805a901e856b1dd80b4e6ee4338db547050308 AS builder
+#   docker buildx imagetools inspect golang:1.27.3-alpine --format '{{ .Manifest.Digest }}'
+FROM golang:1.27.3-alpine@sha256:d200d2dd76b03a99b52651fd1325aff7dcd35422c35c01bac56571b0507f3deb AS builder
 
 WORKDIR /src
 
