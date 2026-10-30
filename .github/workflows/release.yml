@@ -306,15 +306,35 @@ jobs:
         run: |
           set -euo pipefail
           staging="${GHCR_IMAGE}:${TAG}-staging"
-          # "v1.2.3" becomes "v1" and "v1.2".
-          major="${TAG%%.*}"
-          minor="${TAG%.*}"
+          # The version tag always moves: the image of this release is
+          # reachable under the version it was built from.
+          tags=(--tag "${GHCR_IMAGE}:${TAG}")
+          promoted="${TAG}"
+          # A tag with a pre-release suffix ("v1.2.3-rc1") is a pre-release.
+          # It only moves its own version tag: "latest", "vMAJOR" and
+          # "vMAJOR.MINOR" keep pointing at the last stable release, so a
+          # release candidate is never installed as the current version.
+          #
+          # This is the same rule that .goreleaser.yaml applies to the
+          # release itself ("prerelease: auto"), so the GitHub release and
+          # the container tags agree about what a pre-release is.
+          case "${TAG}" in
+            *-*)
+              echo "::notice::${TAG} is a pre-release: only its version tag is moved"
+              ;;
+            *)
+              # "v1.2.3" becomes "v1" and "v1.2".
+              major="${TAG%%.*}"
+              minor="${TAG%.*}"
+              tags+=(
+                --tag "${GHCR_IMAGE}:${major}"
+                --tag "${GHCR_IMAGE}:${minor}"
+                --tag "${GHCR_IMAGE}:latest"
+              )
+              promoted="${TAG}, ${major}, ${minor} and latest"
+              ;;
+          esac
           # The manifest of the staging tag is copied as it is, so the
           # attestation of the image travels with it.
-          docker buildx imagetools create \
-            --tag "${GHCR_IMAGE}:${TAG}" \
-            --tag "${GHCR_IMAGE}:${major}" \
-            --tag "${GHCR_IMAGE}:${minor}" \
-            --tag "${GHCR_IMAGE}:latest" \
-            "${staging}"
-          echo "Promoted ${staging} to ${TAG}, ${major}, ${minor} and latest"
+          docker buildx imagetools create "${tags[@]}" "${staging}"
+          echo "Promoted ${staging} to ${promoted}"

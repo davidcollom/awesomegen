@@ -193,4 +193,11 @@ release:
   # a release whose signatures and attestations do not exist yet - or that
   # is never signed at all, because the signing job failed.
   draft: true
-  prerelease: false
+  # "auto" marks a release as a pre-release when the tag carries a
+  # pre-release suffix (v1.2.3-rc1). A pre-release must never be served as
+  # the current version, so the flag has to follow the tag.
+  #
+  # The container tags are moved by the `publish` job of the release
+  # workflow, which applies the same rule: a pre-release only moves its own
+  # version tag and never "latest", "vMAJOR" or "vMAJOR.MINOR".
+  prerelease: auto
