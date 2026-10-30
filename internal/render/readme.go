@@ -344,14 +344,18 @@ func writeItems(doc *md.Markdown, items []*config.Item, list config.List) int {
 		if it == nil {
 			continue
 		}
-		if m := it.GHMeta; m != nil {
-			if writeRepoItem(doc, m, it, starsFormat, list.Locale) {
+		// The declared type of the entry decides how it is rendered. An
+		// entry that was declared as a link stays a link, even when it also
+		// carries the metadata of a repository: the curated URL and title
+		// are the ones that were configured.
+		if it.IsLink() {
+			if writeLinkItem(doc, it) {
 				emitted++
 			}
 			continue
 		}
-		if it.IsLink() {
-			if writeLinkItem(doc, it) {
+		if m := it.GHMeta; m != nil {
+			if writeRepoItem(doc, m, it, starsFormat, list.Locale) {
 				emitted++
 			}
 		}

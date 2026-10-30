@@ -586,3 +586,34 @@ func TestMarkdownOmitsTheDanglingSeparator(t *testing.T) {
 	require.Contains(t, md, "- [b/two](https://github.com/b/two) — ⭐ 12 — Worth a look\n")
 	require.NotContains(t, md, "— —")
 }
+
+// TestMarkdownRendersAnExplicitLinkAsALink makes sure that an entry that was
+// declared as a link is rendered as a link, even when it also carries the
+// metadata of a repository.
+//
+// The metadata is not set by the configuration file - a link is never
+// enriched - but a list that was built in code, or that was enriched
+// before, can carry it. The declared type is the authoritative one: the
+// curated URL and title are the ones that were configured.
+func TestMarkdownRendersAnExplicitLinkAsALink(t *testing.T) {
+	md, err := Markdown(config.List{
+		Title: "A link with metadata",
+		Categories: []*config.Category{
+			{Name: "Documentation", Items: []*config.Item{
+				{
+					Type:   config.ItemLink,
+					URL:    "https://example.com/docs",
+					Title:  "The documentation",
+					GHMeta: &github.RepoMeta{FullName: "a/one", URL: "https://github.com/a/one", Stars: 42},
+				},
+			}},
+		},
+	})
+	require.NoError(t, err)
+
+	// The entry is rendered with the configured URL and title.
+	require.Contains(t, md, "- [The documentation](https://example.com/docs)")
+	// It is not rendered as the repository it carries the metadata of.
+	require.NotContains(t, md, "https://github.com/a/one")
+	require.NotContains(t, md, "a/one")
+}
