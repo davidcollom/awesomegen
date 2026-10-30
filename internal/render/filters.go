@@ -53,6 +53,5 @@ func (e Enricher) EnrichAndFilter(ctx context.Context, list config.List) (config
 }
 
 func stale(pushed, now time.Time, months int) bool {
-	dm := (now.Year()-pushed.Year())*12 + int(now.Month()-pushed.Month())
-	return dm > months
+	return now.After(pushed.AddDate(0, months, 0))
 }
