@@ -121,6 +121,16 @@ func runGenerateWith(cmd *cobra.Command, opts *options, gen *generator) error {
 		if err != nil {
 			var lookupErr *render.LookupError
 			if !errors.As(err, &lookupErr) {
+				// A lookup that failed for a reason that has nothing to
+				// do with the repository - an expired token, a rate
+				// limit, a server error, a network problem - leaves the
+				// list unknown rather than curated. The README is not
+				// written, and the message names the file that is left
+				// alone.
+				var unavailable *render.UnavailableError
+				if errors.As(err, &unavailable) {
+					return fmt.Errorf("%w: refusing to overwrite %s with an unknown list", err, outputs[i])
+				}
 				return err
 			}
 			// Individual lookup failures are reported but do not abort the

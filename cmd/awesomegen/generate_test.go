@@ -223,3 +223,33 @@ func TestGenerateDryRunKeepsTheCommentClosed(t *testing.T) {
 		})
 	}
 }
+
+// TestGenerateRefusesToWriteAnUnknownList makes sure that a lookup which
+// fails for a reason that has nothing to do with the repository stops the
+// run and names the file that is left alone.
+//
+// The list is then unknown rather than curated, and writing it would
+// replace a curated README with a list that is missing entries without a
+// word.
+func TestGenerateRefusesToWriteAnUnknownList(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := writeConfigIn(t, dir, oneListConfig)
+
+	existing := filepath.Join(dir, "README.md")
+	require.NoError(t, os.WriteFile(existing, []byte("curated\n"), 0o600))
+
+	gen := testGenerator(t)
+	gen.GH = fakeGHClient{err: errors.New("the API is down")}
+
+	opts := &options{configPath: cfgPath}
+	_, err := runGenerateWithArgs(t, opts, gen)
+	require.Error(t, err)
+	// The message says what happened and which file was left alone.
+	require.ErrorContains(t, err, "refusing to overwrite")
+	require.ErrorContains(t, err, existing)
+
+	// The curated file is still there.
+	data, err := os.ReadFile(existing)
+	require.NoError(t, err)
+	require.Equal(t, "curated\n", string(data))
+}
