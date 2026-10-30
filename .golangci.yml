@@ -64,13 +64,6 @@ linters:
           - errcheck
           - gocritic
           - revive
-      # `slug` in internal/render/helpers.go is dead code. It is removed in
-      # a separate change; until then the finding is excluded here so that
-      # the lint job stays green. Tracked in BACKLOG.md.
-      - path: internal/render/helpers\.go
-        text: "^func slug is unused$"
-        linters:
-          - unused
 
 formatters:
   enable:
