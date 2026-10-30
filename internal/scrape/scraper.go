@@ -191,16 +191,38 @@ func (s *HTMLScraper) ListRepos(ctx context.Context, user, slug string) ([]strin
 		added := len(out) - countBefore
 		s.log.Info("scraped page", "url", u, "repos_found", added)
 
-		if added == 0 || !hasNext(doc) {
+		if added == 0 {
+			// A page without a new repository is the end of the list.
+			// The first page cannot be empty: a star list always holds
+			// at least one entry, so an empty first page means that the
+			// entries of the list were not found - the layout of the
+			// page changed. The run stops with an error instead of
+			// writing a list that lost every repository.
+			if page == 1 {
+				return nil, fmt.Errorf("scrape: the first page of the star list %s/%s holds no repository; the layout of the page may have changed", user, slug)
+			}
+			// A page that still advertises further pages cannot be the
+			// end of the list: the entries of the list are missing, and
+			// the repositories that are on the pages that were not read
+			// would be dropped without a word.
+			if hasNext(doc) {
+				return nil, fmt.Errorf("scrape: page %d of the star list %s/%s holds no repository but advertises further pages; the layout of the page may have changed", page, user, slug)
+			}
+			return out, nil
+		}
+		if !hasNext(doc) {
 			return out, nil
 		}
 	}
 
-	// The page cap was reached while the list still had more pages.
-	s.log.Info("page cap reached, the list may be truncated", "max_pages", MaxPages)
+	// The page cap was reached while the list still had more pages. The
+	// list would be truncated, and the repositories on the pages that were
+	// not read would be dropped without a word, so the run stops with an
+	// error instead.
+	//
 	// The order of the repositories is the curation order of the star list
 	// and is deliberately not sorted.
-	return out, nil
+	return nil, fmt.Errorf("scrape: the star list %s/%s has more than %d pages; refusing to write a truncated list", user, slug, MaxPages)
 }
 
 // repoHrefs returns the hrefs of the links that point at the repositories of

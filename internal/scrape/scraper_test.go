@@ -15,14 +15,22 @@ import (
 	"github.com/davidcollom/awesomegen/internal/scrape"
 )
 
-// newServer starts a test server that serves the given fixture for every
-// request and returns a scraper pointed at it.
+// newServer starts a test server that serves the given fixture for the
+// first page of a star list and returns a scraper pointed at it.
+//
+// The pages after the first one are not there, the way GitHub answers the
+// request for a page that is past the end of a list. The fixture holds a
+// link to the next page, so the scraper asks for it.
 func newServer(t *testing.T, fixture string) (*scrape.HTMLScraper, *httptest.Server) {
 	t.Helper()
 	html, err := os.ReadFile(fixture)
 	require.NoError(t, err, "reading fixture %s", fixture)
 
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("page") != "" && r.URL.Query().Get("page") != "1" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		_, _ = w.Write(html)
 	}))
@@ -315,6 +323,10 @@ func TestListReposFallbackScanRejectsNavigationLinks(t *testing.T) {
 //
 // The cap is the last resort against a list that never ends, and it has to
 // be the number of pages it claims to be.
+//
+// The list is longer than the cap allows, so the run stops with an error:
+// the repositories on the pages that were not read would be dropped without
+// a word, and a truncated list would quietly replace the curated one.
 func TestListReposStopsAtThePageCap(t *testing.T) {
 	var pages int
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -328,9 +340,58 @@ func TestListReposStopsAtThePageCap(t *testing.T) {
 	sc.BaseURL = srv.URL
 
 	out, err := sc.ListRepos(context.Background(), "owner", "list")
-	require.NoError(t, err)
-	require.Len(t, out, scrape.MaxPages)
+	require.Error(t, err, "a truncated list must not be returned as if it were complete")
+	require.ErrorContains(t, err, "truncated")
+	require.Nil(t, out)
 	require.Equal(t, scrape.MaxPages, pages, "the scraper asks for at most MaxPages pages")
+}
+
+// TestListReposFailsWhenTheListHoldsNoRepository makes sure that a star
+// list that yields no repository at all is an error.
+//
+// A star list always holds at least one entry, so a page without a single
+// repository means that the entries were not found - the layout of the page
+// changed. The run has to stop instead of writing a list that lost every
+// repository.
+func TestListReposFailsWhenTheListHoldsNoRepository(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write([]byte(`<a href="/settings/profile">Settings</a>`))
+	}))
+	defer srv.Close()
+
+	sc := scrape.NewScraper(stdr.New(nil))
+	sc.BaseURL = srv.URL
+
+	out, err := sc.ListRepos(context.Background(), "owner", "list")
+	require.Error(t, err)
+	require.ErrorContains(t, err, "holds no repository")
+	require.Nil(t, out)
+}
+
+// TestListReposFailsWhenAPageHoldsNoRepository makes sure that a page that
+// advertises further pages but holds no repository is an error.
+//
+// The list continues, so the repositories that are on the pages that were
+// not read would be dropped without a word.
+func TestListReposFailsWhenAPageHoldsNoRepository(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		if r.URL.Query().Get("page") == "1" {
+			_, _ = w.Write([]byte(`<a href="/owner/one">one</a><a rel="next" href="?page=2">Next</a>`))
+			return
+		}
+		_, _ = w.Write([]byte(`<a rel="next" href="?page=3">Next</a>`))
+	}))
+	defer srv.Close()
+
+	sc := scrape.NewScraper(stdr.New(nil))
+	sc.BaseURL = srv.URL
+
+	out, err := sc.ListRepos(context.Background(), "owner", "list")
+	require.Error(t, err)
+	require.ErrorContains(t, err, "advertises further pages")
+	require.Nil(t, out)
 }
 
 // TestListReposIgnoresPathsThatAreNotRepositories makes sure that the
