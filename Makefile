@@ -83,8 +83,12 @@ schema: ## Regenerate config-schema.json from the Go types
 
 .PHONY: schema-check
 schema-check: ## Fail when config-schema.json is out of date
-	$(GO) generate ./...
-	git diff --exit-code -- $(SCHEMA_FILE)
+	@$(GO) generate ./...
+	@if ! git diff --quiet -- $(SCHEMA_FILE); then \
+		echo "$(SCHEMA_FILE) is out of date: run 'make schema' and commit the result" >&2; \
+		git --no-pager diff -- $(SCHEMA_FILE); \
+		exit 1; \
+	fi
 
 .PHONY: tidy
 tidy: ## Tidy go.mod and go.sum

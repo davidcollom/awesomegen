@@ -65,9 +65,10 @@ make test-race     # with the race detector (CGO_ENABLED=1)
 make cover         # coverage profile in coverage.out
 ```
 
-The tests do not touch the network: the GitHub client is exercised against a
-test server, the scraper against the HTML fixture in `testdata/`, and the
-clock is controlled with `clockwork`.
+The tests do not touch the network: the scraper runs against the HTML
+fixture in `testdata/`, which is served by a local test server, the clock is
+controlled with `clockwork`, and the GitHub client is exercised through the
+fake it takes as an interface.
 
 ---
 

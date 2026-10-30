@@ -99,6 +99,10 @@ jobs:
           version: ${{ env.GORELEASER_VERSION }}
           # `--skip=sign`: the artefacts are signed by the `sign` job below,
           # which is the only job with an OIDC token.
+          #
+          # The release is created as a draft (see the `draft` setting in
+          # .goreleaser.yaml). The `publish` job promotes it once the
+          # signatures, the attestation and the SBOM are in place.
           args: release --clean --skip=sign
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -217,3 +221,27 @@ jobs:
         with:
           subject-checksums: dist/checksums.txt
           show-summary: true
+
+  publish:
+    name: publish the release
+    # The release stays a draft until everything that belongs to it is in
+    # place. The composite action resolves "latest" through the API, and
+    # the API does not return drafts, so a release that is published too
+    # early could be installed before its signature exists - or without one
+    # at all, when the signing job fails.
+    needs: [goreleaser, sbom, sign]
+    runs-on: ubuntu-latest
+    permissions:
+      # Promote the draft to a published release.
+      contents: write
+    steps:
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          # A draft that never reaches this step is never published, which
+          # is the point: the artefacts stay available for inspection.
+          gh release edit "${TAG}" --draft=false
+          echo "Published ${TAG}"

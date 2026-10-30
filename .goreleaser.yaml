@@ -32,12 +32,12 @@ before:
     # config-schema.json is generated from the Go types. Fail the release
     # when the committed schema is stale, so the published schema always
     # matches the released binary.
-    - |
-      go generate ./... &&
-      git diff --exit-code -- config-schema.json || (
-        echo "config-schema.json is out of date: run 'make schema' and commit the result" >&2
-        exit 1
-      )
+    #
+    # GoReleaser tokenises a hook instead of running it through a shell, so
+    # the generation and the comparison are two hooks: a single hook with an
+    # `&&` would silently be truncated at the first unquoted one.
+    - go generate ./...
+    - git diff --exit-code -- config-schema.json
 
 builds:
   - id: awesomegen
@@ -180,5 +180,13 @@ snapshot:
 report_sizes: true
 
 release:
-  draft: false
+  # The release is created as a draft. The signing and the SBOM jobs attach
+  # their artefacts to it, and the `publish` job of the release workflow
+  # promotes it to a published release only after they have succeeded.
+  #
+  # Publishing it directly would make an incomplete release visible: the
+  # composite action resolves "latest" through the API, so it could install
+  # a release whose signatures and attestations do not exist yet - or that
+  # is never signed at all, because the signing job failed.
+  draft: true
   prerelease: false

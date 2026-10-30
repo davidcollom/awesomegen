@@ -32,15 +32,20 @@ RUN go mod download
 
 COPY . .
 
-# TARGETOS/TARGETARCH are provided by buildx. The defaults keep a plain
-# `docker build` working.
-ARG TARGETOS=linux
-ARG TARGETARCH=amd64
+# TARGETOS and TARGETARCH are provided by BuildKit. They are declared
+# without a default on purpose: a default would override the automatic
+# value, and a cross-platform build would then compile for the wrong
+# architecture and copy that binary into an image of another one.
+#
+# The shell defaults below only apply to a build with a builder that does
+# not supply them at all, such as the classic builder.
+ARG TARGETOS
+ARG TARGETARCH
 ARG VERSION=dev
 
 # CGO is disabled, so the binary is fully static and runs on a base image
 # that has no C library at all.
-RUN CGO_ENABLED=0 GOOS="${TARGETOS}" GOARCH="${TARGETARCH}" \
+RUN CGO_ENABLED=0 GOOS="${TARGETOS:-linux}" GOARCH="${TARGETARCH:-amd64}" \
     go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" \
     -o /out/awesomegen ./cmd/awesomegen
 
