@@ -52,14 +52,50 @@ func NewScraper(log logr.Logger) *HTMLScraper {
 	}
 }
 
+// excludedLinks lists the first path segments GitHub uses for its own
+// pages. A two-segment link whose first segment is one of these is a
+// navigation link, not a repository.
 var excludedLinks = []string{
-	"topics",
-	"marketplace",
-	"orgs",
+	"about",
+	"account",
+	"apps",
+	"blog",
+	"codespaces",
+	"collections",
 	"contact",
+	"customer-stories",
+	"dashboard",
+	"education",
+	"enterprise",
+	"events",
+	"explore",
+	"features",
+	"gist",
+	"issues",
+	"join",
+	"login",
+	"logout",
+	"marketplace",
+	"new",
+	"nonprofit",
+	"notifications",
+	"orgs",
+	"organizations",
+	"pricing",
+	"pulls",
+	"readme",
+	"search",
+	"security",
+	"settings",
+	"site",
 	"solutions",
 	"sponsors",
-	"resources",
+	"stars",
+	"teams",
+	"topics",
+	"trends",
+	"users",
+	"watch",
 }
 
 func (s *HTMLScraper) ListRepos(ctx context.Context, user, slug string) ([]string, error) {
@@ -121,35 +157,92 @@ func (s *HTMLScraper) ListRepos(ctx context.Context, user, slug string) ([]strin
 
 		// conservative anchor scan: find /owner/repo links
 		countBefore := len(out)
-		doc.Find(`a[href^="/"]`).Each(func(_ int, a *goquery.Selection) {
-			href, _ := a.Attr("href")
-			href = strings.Trim(href, "/")
-			parts := strings.Split(href, "/")
-			// If we have exactly 2 `/`'s and contains a path/part from `excludedLinks`
-			if len(parts) == 2 && !slices.Contains(excludedLinks, parts[0]) {
-				slug := parts[0] + "/" + parts[1]
-				if _, ok := seen[slug]; !ok {
-					seen[slug] = struct{}{}
-					out = append(out, slug)
-				}
+		for _, href := range repoHrefs(doc) {
+			repo, ok := parseRepoHref(href)
+			if !ok {
+				continue
 			}
-		})
+			if _, ok := seen[repo]; ok {
+				continue
+			}
+			seen[repo] = struct{}{}
+			out = append(out, repo)
+		}
 		added := len(out) - countBefore
 		s.log.Info("scraped page", "url", u, "repos_found", added)
 
 		if added == 0 || !hasNext(doc) {
-			break
+			return out, nil
 		}
 	}
 
-	slices.Sort(out)
+	// The page cap was reached while the list still had more pages.
+	s.log.Info("page cap reached, the list may be truncated", "max_pages", MaxPages-1)
+	// The order of the repositories is the curation order of the star list
+	// and is deliberately not sorted.
 	return out, nil
 }
 
+// repoHrefs returns the hrefs of the anchors that may point at a
+// repository.
+//
+// GitHub renders the entries of a star list as rows, so the row selectors
+// are preferred. The general anchor scan is kept as a fallback so a change
+// to the markup does not silently produce an empty list.
+func repoHrefs(doc *goquery.Document) []string {
+	sel := doc.Find(`div.Box-row a[href^="/"], article.Box-row a[href^="/"]`)
+	if sel.Length() == 0 {
+		sel = doc.Find(`a[href^="/"]`)
+	}
+	var hrefs []string
+	sel.Each(func(_ int, a *goquery.Selection) {
+		if href, ok := a.Attr("href"); ok {
+			hrefs = append(hrefs, href)
+		}
+	})
+	return hrefs
+}
+
+// parseRepoHref returns the owner/repo of a link that points at a
+// repository. Links with a query string or a fragment address a GitHub
+// page rather than a repository, and the first path segment of GitHub's own
+// pages is rejected.
+func parseRepoHref(href string) (string, bool) {
+	if strings.ContainsAny(href, "?#") {
+		return "", false
+	}
+	parts := strings.Split(strings.Trim(href, "/"), "/")
+	if len(parts) != 2 {
+		return "", false
+	}
+	if parts[0] == "" || parts[1] == "" {
+		return "", false
+	}
+	if slices.Contains(excludedLinks, strings.ToLower(parts[0])) {
+		return "", false
+	}
+	return parts[0] + "/" + parts[1], true
+}
+
+// hasNext reports whether the page advertises a further page.
+//
+// The pagination control is matched precisely. The previous implementation
+// matched any anchor whose text contained "next", which was true for the
+// site banner on every page and therefore never stopped the loop.
 func hasNext(doc *goquery.Document) bool {
+	if doc.Find(`a[rel="next"]`).Length() > 0 {
+		return true
+	}
 	next := false
 	doc.Find("a").Each(func(_ int, a *goquery.Selection) {
-		if strings.Contains(strings.ToLower(a.Text()), "next") {
+		text := strings.ToLower(strings.TrimSpace(a.Text()))
+		switch text {
+		case "next", "more", "older", "newer":
+		default:
+			return
+		}
+		href, _ := a.Attr("href")
+		if strings.Contains(href, "page=") {
 			next = true
 		}
 	})

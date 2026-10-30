@@ -35,9 +35,14 @@ lists:
 	l := cfg.Lists[0]
 	require.Equal(t, "misc", l.TopicFallback)
 	require.Equal(t, "en-GB", l.Locale)
-	require.Equal(t, 24, l.StaleMonths)
-	require.Equal(t, 10, l.TopTagsLimit)
-	require.Equal(t, 1, l.MinTagCount)
+	// The optional settings are pointers, so an unset value keeps its
+	// default and an explicit 0 is not overwritten by it.
+	require.Nil(t, l.StaleMonths)
+	require.Equal(t, config.DefaultStaleMonths, l.StaleMonthsValue())
+	require.Nil(t, l.TopTagsLimit)
+	require.Equal(t, config.DefaultTopTagsLimit, l.TopTagsLimitValue())
+	require.Nil(t, l.MinTagCount)
+	require.Equal(t, config.DefaultMinTagCount, l.MinTagCountValue())
 	require.NotNil(t, l.StarsFormat)
 	require.Equal(t, config.StarsFormatLocale, *l.StarsFormat)
 	require.NotNil(t, l.TopicGroupingMode)
@@ -198,4 +203,101 @@ func TestSeedReposPreservesConfiguredCategories(t *testing.T) {
 	require.Len(t, l.Categories[0].Items, 1, "manually configured items must not be discarded")
 	require.Equal(t, "Repositories", l.Categories[1].Name)
 	require.Len(t, l.Categories[1].Items, 2)
+}
+
+// TestLoadKeepsExplicitZero makes sure an explicit 0 is not overwritten by
+// the default. The settings are pointers, so only an unset value is
+// defaulted.
+func TestLoadKeepsExplicitZero(t *testing.T) {
+	path := writeConfig(t, `version: 1
+user: d
+lists:
+  - slug: tools
+    title: Awesome Tools
+    stale_months: 0
+    top_tags_limit: 0
+    min_tag_count: 0
+`)
+	cfg, err := config.Load(path)
+	require.NoError(t, err)
+
+	l := cfg.Lists[0]
+	require.NotNil(t, l.StaleMonths)
+	require.Equal(t, 0, l.StaleMonthsValue())
+	require.NotNil(t, l.TopTagsLimit)
+	require.Equal(t, 0, l.TopTagsLimitValue())
+	require.NotNil(t, l.MinTagCount)
+	require.Equal(t, 0, l.MinTagCountValue())
+}
+
+// TestLoadInfersItemTypes makes sure an item without a type is not silently
+// dropped: the type is inferred from the fields it carries.
+func TestLoadInfersItemTypes(t *testing.T) {
+	path := writeConfig(t, `version: 1
+user: d
+lists:
+  - slug: tools
+    title: Awesome Tools
+    categories:
+      - name: Repositories
+        items:
+          - repo: owner/name
+          - url: https://example.com
+            title: Example
+`)
+	cfg, err := config.Load(path)
+	require.NoError(t, err)
+
+	items := cfg.Lists[0].Categories[0].Items
+	require.Len(t, items, 2)
+	require.Equal(t, config.ItemGitHub, items[0].Type)
+	require.Equal(t, config.ItemLink, items[1].Type)
+}
+
+// TestLoadRejectsInvalidItems makes sure an item that cannot be rendered is
+// reported instead of being dropped.
+func TestLoadRejectsInvalidItems(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+		want string
+	}{
+		{
+			name: "github item without a repo",
+			body: "version: 1\nuser: d\nlists:\n  - slug: s\n    title: T\n    categories:\n      - name: C\n        items:\n          - type: github\n",
+			want: "repo: is required",
+		},
+		{
+			name: "link item without a url",
+			body: "version: 1\nuser: d\nlists:\n  - slug: s\n    title: T\n    categories:\n      - name: C\n        items:\n          - type: link\n",
+			want: "url: is required",
+		},
+		{
+			name: "unknown item type",
+			body: "version: 1\nuser: d\nlists:\n  - slug: s\n    title: T\n    categories:\n      - name: C\n        items:\n          - type: bookmark\n",
+			want: "type: must be one of",
+		},
+		{
+			name: "item without a type and without a repo or a url",
+			body: "version: 1\nuser: d\nlists:\n  - slug: s\n    title: T\n    categories:\n      - name: C\n        items:\n          - title: Nothing\n",
+			want: "repo: or url: is required",
+		},
+		{
+			name: "github item with a malformed repository",
+			body: "version: 1\nuser: d\nlists:\n  - slug: s\n    title: T\n    categories:\n      - name: C\n        items:\n          - type: github\n            repo: not-a-repository\n",
+			want: "repo: invalid owner/repo format",
+		},
+		{
+			name: "github item with a path segment",
+			body: "version: 1\nuser: d\nlists:\n  - slug: s\n    title: T\n    categories:\n      - name: C\n        items:\n          - type: github\n            repo: owner/../other\n",
+			want: "repo: invalid owner/repo format",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := config.Load(writeConfig(t, tt.body))
+			require.Error(t, err)
+			require.Contains(t, err.Error(), tt.want)
+		})
+	}
 }

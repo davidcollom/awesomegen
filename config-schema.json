@@ -26,7 +26,7 @@
       "properties": {
         "type": {
           "$ref": "#/$defs/ItemType",
-          "description": "Item type - either github repository or link"
+          "description": "Item type - either github repository or link - inferred from repo or url when omitted"
         },
         "repo": {
           "type": "string",
@@ -46,10 +46,7 @@
         }
       },
       "additionalProperties": false,
-      "type": "object",
-      "required": [
-        "type"
-      ]
+      "type": "object"
     },
     "ItemType": {
       "type": "string",
@@ -89,7 +86,8 @@
         },
         "stale_months": {
           "type": "integer",
-          "description": "Number of months to consider stale"
+          "description": "Number of months to consider stale - 0 disables the check",
+          "default": 24
         },
         "badges": {
           "items": {
@@ -127,21 +125,15 @@
           "type": "string",
           "description": "Locale for formatting numbers - BCP-47 (default: en-GB)"
         },
-        "group_by_top_tags": {
-          "type": "boolean",
-          "description": "Group repositories by top tags"
-        },
         "top_tags_limit": {
           "type": "integer",
-          "description": "Maximum number of top tags to group by"
+          "description": "Maximum number of top tags to group by - 0 means no limit",
+          "default": 10
         },
         "min_tag_count": {
           "type": "integer",
-          "description": "Minimum count for a tag to be considered a top tag"
-        },
-        "single_home": {
-          "type": "boolean",
-          "description": "If true - generate a single home page"
+          "description": "Minimum count for a tag to be considered a top tag",
+          "default": 1
         },
         "tag_aliases": {
           "additionalProperties": {

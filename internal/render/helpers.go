@@ -21,8 +21,8 @@ func humanStars(n int, format config.StarsFormat, locale string) string {
 		switch {
 		case n >= 1_000_000:
 			return fmt.Sprintf("%.1fM", float64(n)/1_000_000)
-		case n >= 10_000:
-			return fmt.Sprintf("%dk", n/1_000) // no decimals for ≥10k
+		case n >= 100_000:
+			return fmt.Sprintf("%dk", n/1_000) // no decimals for six figures
 		case n >= 1_000:
 			return fmt.Sprintf("%.1fk", float64(n)/1_000)
 		default:
@@ -33,11 +33,6 @@ func humanStars(n int, format config.StarsFormat, locale string) string {
 		p := message.NewPrinter(tag)
 		return p.Sprintf("%d", n)
 	}
-}
-
-// slug returns a stable, lowercase identifier for a heading key.
-func slug(s string) string {
-	return strings.ToLower(strings.ReplaceAll(strings.TrimSpace(s), " ", "-"))
 }
 
 // htmlTagPattern matches anything that looks like an HTML tag. GitHub strips
@@ -173,36 +168,18 @@ func (a *anchorSet) unique(heading string) string {
 	return candidate
 }
 
+// sortItems orders GitHub repositories before external links.
+//
+// The sort is stable: the curation order of the entries is preserved within
+// each group, because that order is the only signal a curated list carries.
 func sortItems(items []*config.Item) {
-	slices.SortFunc(items, func(a, b *config.Item) int {
-		typeRank := func(t config.ItemType) int {
-			if t == config.ItemGitHub {
+	slices.SortStableFunc(items, func(a, b *config.Item) int {
+		typeRank := func(t *config.Item) int {
+			if t.IsGitHub() {
 				return 0
 			}
 			return 1
 		}
-		if r := typeRank(a.Type) - typeRank(b.Type); r != 0 {
-			return r
-		}
-		ak := key(*a)
-		bk := key(*b)
-		switch {
-		case ak < bk:
-			return -1
-		case ak > bk:
-			return 1
-		default:
-			return 0
-		}
+		return typeRank(a) - typeRank(b)
 	})
-}
-
-func key(i config.Item) string {
-	if i.Type == config.ItemGitHub && i.GHMeta != nil {
-		return i.GHMeta.FullName
-	}
-	if i.Title != "" {
-		return i.Title
-	}
-	return i.URL
 }

@@ -26,7 +26,7 @@ func TestEnrichAndFilter(t *testing.T) {
 		"a/b": {FullName: "a/b", Stars: 100, PushedAt: time.Date(2025, 7, 1, 0, 0, 0, 0, time.UTC)},
 		"x/y": {FullName: "x/y", Stars: 10, PushedAt: time.Date(2020, 7, 1, 0, 0, 0, 0, time.UTC)},
 	}}
-	l := config.List{Title: "T", MinStars: 50, StaleMonths: 24,
+	l := config.List{Title: "T", MinStars: 50, StaleMonths: ptr(24),
 		Categories: []*config.Category{{Name: "Repositories", Items: []*config.Item{
 			{Type: config.ItemGitHub, Repo: "a/b"},
 			{Type: config.ItemGitHub, Repo: "x/y"},
@@ -51,7 +51,7 @@ func TestEnrichAndFilterStaleMonthsAreMonths(t *testing.T) {
 		// Pushed one year and eleven months ago: still fresh for 24 months.
 		"new/repo": {FullName: "new/repo", Stars: 100, PushedAt: now.AddDate(-1, -11, 0)},
 	}}
-	l := config.List{Title: "T", StaleMonths: 24,
+	l := config.List{Title: "T", StaleMonths: ptr(24),
 		Categories: []*config.Category{{Name: "Repositories", Items: []*config.Item{
 			{Type: config.ItemGitHub, Repo: "old/repo"},
 			{Type: config.ItemGitHub, Repo: "new/repo"},
@@ -88,4 +88,57 @@ func TestEnrichAndFilterTreatsCancellationAsFatal(t *testing.T) {
 	require.ErrorIs(t, err, context.Canceled)
 	var lookupErr *render.LookupError
 	require.False(t, errors.As(err, &lookupErr), "a canceled run must not be reported as a lookup failure")
+}
+
+// ptr returns a pointer to a value, for the optional settings that are only
+// defaulted when they were left unset.
+func ptr[T any](v T) *T { return &v }
+
+// TestEnrichAndFilterDoesNotMutateTheInput makes sure the caller's
+// configuration is left alone: the enrichment writes the repository metadata
+// into the items, and a second run over the same configuration would
+// otherwise see the metadata of the first run.
+func TestEnrichAndFilterDoesNotMutateTheInput(t *testing.T) {
+	clk := clockwork.NewFakeClockAt(time.Date(2025, 8, 1, 0, 0, 0, 0, time.UTC))
+	gh := fakeGH{repos: map[string]github.RepoMeta{
+		"a/b": {FullName: "a/b", URL: "https://github.com/a/b", Stars: 100, PushedAt: clk.Now().AddDate(0, -1, 0)},
+	}}
+
+	l := config.List{Title: "T",
+		Categories: []*config.Category{{Name: "Repositories", Items: []*config.Item{
+			{Type: config.ItemGitHub, Repo: "a/b"},
+		}}}}
+	enr := render.Enricher{GH: gh, Now: clk}
+
+	out, err := enr.EnrichAndFilter(context.Background(), l)
+	require.NoError(t, err)
+
+	require.Len(t, out.Categories, 1)
+	require.Len(t, out.Categories[0].Items, 1)
+	require.NotNil(t, out.Categories[0].Items[0].GHMeta, "the enriched copy carries the metadata")
+	require.Equal(t, "a/b", out.Categories[0].Items[0].GHMeta.FullName)
+
+	require.Nil(t, l.Categories[0].Items[0].GHMeta, "the input must not be modified")
+}
+
+// TestEnrichAndFilterStaleMonthsZeroNeverStale makes sure an explicit
+// stale_months of 0 disables the staleness check instead of being replaced
+// by the default.
+func TestEnrichAndFilterStaleMonthsZeroNeverStale(t *testing.T) {
+	now := time.Date(2025, 8, 1, 0, 0, 0, 0, time.UTC)
+	clk := clockwork.NewFakeClockAt(now)
+	gh := fakeGH{repos: map[string]github.RepoMeta{
+		"a/b": {FullName: "a/b", URL: "https://github.com/a/b", Stars: 100, PushedAt: now.AddDate(-20, 0, 0)},
+	}}
+
+	l := config.List{Title: "T", StaleMonths: ptr(0),
+		Categories: []*config.Category{{Name: "Repositories", Items: []*config.Item{
+			{Type: config.ItemGitHub, Repo: "a/b"},
+		}}}}
+	enr := render.Enricher{GH: gh, Now: clk}
+
+	out, err := enr.EnrichAndFilter(context.Background(), l)
+	require.NoError(t, err)
+	require.Len(t, out.Categories[0].Items, 1,
+		"stale_months: 0 disables the staleness check")
 }

@@ -106,28 +106,58 @@ func Markdown(list config.List) (string, error) {
 
 // buildSections turns the list into the tree of sections that is rendered.
 func buildSections(list config.List) []*section {
-	var items []*config.Item
+	if list.GroupByTopic {
+		return topicSections(list, collectItems(list))
+	}
+	return categorySections(list)
+}
+
+// categorySections renders one section per configured category.
+//
+// This is the mode used when group_by_topic is false: the entries are listed
+// in the order they were curated in, without being grouped by topic.
+//
+// A repository that appears in more than one category is only rendered in the
+// first one: printing it twice looked like a bug.
+func categorySections(list config.List) []*section {
+	seen := map[string]struct{}{}
+	var out []*section
 	for _, c := range list.Categories {
 		if c == nil {
 			continue
 		}
+		name := c.Name
+		if name == "" {
+			name = "Repositories"
+		}
+		items := make([]*config.Item, 0, len(c.Items))
 		for _, it := range c.Items {
 			if it == nil {
 				continue
 			}
+			if k := itemKey(it); k != "" {
+				if _, dup := seen[k]; dup {
+					continue
+				}
+				seen[k] = struct{}{}
+			}
 			items = append(items, it)
 		}
+		if len(items) == 0 {
+			continue
+		}
+		out = append(out, &section{
+			level: 3,
+			plain: TitlecaseKeys(name, list.Locale),
+			items: items,
+		})
 	}
-
-	if list.GroupByTopic {
-		return topicSections(list, items)
-	}
-	return flatSections(list, items)
+	return out
 }
 
 // topicSections groups the entries by GitHub topic.
 func topicSections(list config.List, items []*config.Item) []*section {
-	ranked := rankTopTags(items, list.TagAliases, list.MinTagCount, list.TopTagsLimit)
+	ranked := rankTopTags(items, list.TagAliases, list.MinTagCountValue(), list.TopTagsLimitValue())
 	if len(ranked) == 0 {
 		return nil
 	}
@@ -181,25 +211,46 @@ func topicSections(list config.List, items []*config.Item) []*section {
 	return out
 }
 
-// flatSections lists the entries under the topic of each repository.
-func flatSections(list config.List, items []*config.Item) []*section {
-	groups := map[string][]*config.Item{}
-	for _, it := range items {
-		if it == nil || it.GHMeta == nil {
+// collectItems returns the items of every category in configuration order.
+//
+// A repository that appears in more than one category is only returned once:
+// rendering it twice looked like a bug and it skewed the topic ranking,
+// which counts the topics of every item it sees.
+func collectItems(list config.List) []*config.Item {
+	var out []*config.Item
+	seen := map[string]struct{}{}
+	for _, c := range list.Categories {
+		if c == nil {
 			continue
 		}
-		t := list.TopicFallback
-		if len(it.GHMeta.Topics) > 0 && it.GHMeta.Topics[0] != "" {
-			t = it.GHMeta.Topics[0]
+		for _, it := range c.Items {
+			if it == nil {
+				continue
+			}
+			if k := itemKey(it); k != "" {
+				if _, ok := seen[k]; ok {
+					continue
+				}
+				seen[k] = struct{}{}
+			}
+			out = append(out, it)
 		}
-		groups[t] = append(groups[t], it)
-	}
-
-	var out []*section
-	for _, k := range mapsSortedKeys(groups) {
-		out = append(out, &section{level: 3, plain: TitlecaseKeys(k, list.Locale), items: groups[k]})
 	}
 	return out
+}
+
+// itemKey returns a stable identity for an item, used to de-duplicate.
+func itemKey(it *config.Item) string {
+	if it.GHMeta != nil && it.GHMeta.FullName != "" {
+		return "repo:" + it.GHMeta.FullName
+	}
+	if it.Repo != "" {
+		return "repo:" + it.Repo
+	}
+	if it.URL != "" {
+		return "link:" + it.URL
+	}
+	return ""
 }
 
 // resolveSections allocates the anchor of every heading in the order the
@@ -231,77 +282,96 @@ func writeSections(doc *md.Markdown, sections []*section, list config.List) int 
 		if !s.hideTitle {
 			doc.H3(s.title).LF()
 		}
-		emitted += writeRepoLines(doc, s.items, list)
+		emitted += writeItems(doc, s.items, list)
 		doc.LF()
 		for _, sub := range s.subs {
 			if !sub.hideTitle {
 				doc.H4(sub.title).LF()
 			}
-			emitted += writeRepoLines(doc, sub.items, list)
+			emitted += writeItems(doc, sub.items, list)
 			doc.LF()
 		}
 	}
 	return emitted
 }
 
-// writeRepoLines renders one list item per repository and returns the number
-// of items that were written.
-func writeRepoLines(doc *md.Markdown, items []*config.Item, list config.List) int {
-	// keep sort stable & readable
-	slices.SortFunc(items, func(a, b *config.Item) int {
-		var ak, bk string
-		if a.GHMeta != nil {
-			ak = a.GHMeta.FullName
-		}
-		if b.GHMeta != nil {
-			bk = b.GHMeta.FullName
-		}
-		switch {
-		case ak < bk:
-			return -1
-		case ak > bk:
-			return 1
-		default:
-			return 0
-		}
-	})
+// writeItems renders one list item per entry and returns the number of
+// entries that were written.
+//
+// The order of the entries is preserved: it is the order they were curated
+// in, either by the star list or by the configuration file.
+func writeItems(doc *md.Markdown, items []*config.Item, list config.List) int {
+	starsFormat := config.StarsFormatLocale
+	if list.StarsFormat != nil {
+		starsFormat = *list.StarsFormat
+	}
+
 	emitted := 0
 	for _, it := range items {
-		m := it.GHMeta
-		if m == nil {
+		if it == nil {
 			continue
 		}
-		// stars (humanised, optional)
-		starsFormat := config.StarsFormatLocale
-		if list.StarsFormat != nil {
-			starsFormat = *list.StarsFormat
-		}
-		stars := humanStars(m.Stars, starsFormat, list.Locale)
-		starPart := ""
-		if stars != "" {
-			starPart = " — ⭐ " + stars
-		}
-
-		license := ""
-		if m.License != "" {
-			license = " · " + sanitizeText(m.License)
-		}
-
-		note := ""
-		if it.Notes != "" {
-			note = " — " + sanitizeText(it.Notes)
-		}
-
-		url := sanitizeURL(m.URL)
-		if url == "" {
+		if m := it.GHMeta; m != nil {
+			if writeRepoItem(doc, m, it, starsFormat, list.Locale) {
+				emitted++
+			}
 			continue
 		}
-		desc := sanitizeText(m.Description)
-		doc.PlainTextf("- [%s](%s)%s%s — %s%s",
-			sanitizeText(m.FullName), url, starPart, license, desc, note)
-		emitted++
+		if it.IsLink() {
+			if writeLinkItem(doc, it) {
+				emitted++
+			}
+		}
 	}
 	return emitted
+}
+
+// writeRepoItem renders a GitHub repository entry. It reports whether the
+// entry was written: an entry without a usable URL is skipped.
+func writeRepoItem(doc *md.Markdown, m *github.RepoMeta, it *config.Item, starsFormat config.StarsFormat, locale string) bool {
+	url := sanitizeURL(m.URL)
+	if url == "" {
+		return false
+	}
+
+	starPart := ""
+	if stars := humanStars(m.Stars, starsFormat, locale); stars != "" {
+		starPart = " — ⭐ " + stars
+	}
+
+	license := ""
+	if m.License != "" {
+		license = " · " + sanitizeText(m.License)
+	}
+
+	note := ""
+	if it.Notes != "" {
+		note = " — " + sanitizeText(it.Notes)
+	}
+
+	desc := sanitizeText(m.Description)
+	doc.PlainTextf("- [%s](%s)%s%s — %s%s",
+		sanitizeText(m.FullName), url, starPart, license, desc, note)
+	return true
+}
+
+// writeLinkItem renders an external link entry. It reports whether the entry
+// was written: an entry without a usable URL is skipped.
+func writeLinkItem(doc *md.Markdown, it *config.Item) bool {
+	url := sanitizeURL(it.URL)
+	if url == "" {
+		return false
+	}
+	title := sanitizeText(it.Title)
+	if title == "" {
+		title = sanitizeText(it.URL)
+	}
+	note := ""
+	if it.Notes != "" {
+		note = " — " + sanitizeText(it.Notes)
+	}
+	doc.PlainTextf("- [%s](%s)%s", title, url, note)
+	return true
 }
 
 func mapsSortedKeys[T any](m map[string]T) []string {

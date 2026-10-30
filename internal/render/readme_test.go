@@ -1,6 +1,7 @@
 package render
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/davidcollom/awesomegen/internal/config"
@@ -17,8 +18,15 @@ func TestHumanStarsLocaleGB(t *testing.T) {
 
 func TestHumanStarsCompact(t *testing.T) {
 	require.Equal(t, "4.5k", humanStars(4500, "compact", "en-GB"))
-	require.Equal(t, "12k", humanStars(12_345, "compact", "en-GB"))
+	require.Equal(t, "12.3k", humanStars(12_345, "compact", "en-GB"))
 	require.Equal(t, "1.2M", humanStars(1_234_567, "compact", "en-GB"))
+	// The format is consistent across the whole range: the decimals are
+	// dropped at six figures, not in the middle of the range.
+	require.Equal(t, "10.0k", humanStars(9_999, "compact", "en-GB"))
+	require.Equal(t, "10.0k", humanStars(10_000, "compact", "en-GB"))
+	require.Equal(t, "100k", humanStars(100_000, "compact", "en-GB"))
+	require.Equal(t, "999k", humanStars(999_999, "compact", "en-GB"))
+	require.Equal(t, "999", humanStars(999, "compact", "en-GB"))
 }
 
 func TestGroupingFlat(t *testing.T) {
@@ -227,25 +235,25 @@ func TestMarkdownRejectsListWithoutEntries(t *testing.T) {
 		require.ErrorIs(t, err, ErrNoEntries)
 	})
 
-	t.Run("items without metadata", func(t *testing.T) {
+	t.Run("items without a usable URL", func(t *testing.T) {
 		_, err := Markdown(config.List{
 			Title:             "Link List",
 			StarsFormat:       &starsFormatCompact,
 			TopicGroupingMode: &topicGroupingFlat,
 			Categories: []*config.Category{{Name: "Repositories", Items: []*config.Item{
-				{Type: config.ItemLink, URL: "https://example.com"},
+				{Type: config.ItemLink, URL: "javascript:alert(1)"},
 			}}},
 		})
 		require.ErrorIs(t, err, ErrNoEntries)
 	})
 
 	t.Run("no topic passes the threshold", func(t *testing.T) {
-
+		minTagCount := 5
 		_, err := Markdown(config.List{
 			Title:             "Grouped",
 			GroupByTopic:      true,
 			TopicGroupingMode: &topicGroupingFlat,
-			MinTagCount:       5,
+			MinTagCount:       &minTagCount,
 			Categories: []*config.Category{{Name: "Repositories", Items: []*config.Item{
 				{GHMeta: &github.RepoMeta{
 					FullName: "repo/one",
@@ -396,4 +404,75 @@ func TestMarkdownDoesNotReserveAnchorsForHiddenHeadings(t *testing.T) {
 	// subsection under "Ai" does not take it away.
 	require.Contains(t, md, "- [Misc](#misc)")
 	require.NotContains(t, md, "#misc-1")
+}
+
+// TestMarkdownRendersLinkItems makes sure a curated link entry is rendered.
+// The entries were dropped entirely before, because the renderer only
+// considered items with GitHub metadata.
+func TestMarkdownRendersLinkItems(t *testing.T) {
+	md, err := Markdown(config.List{
+		Title: "With Links",
+		Categories: []*config.Category{{Name: "Reading", Items: []*config.Item{
+			{Type: config.ItemLink, Title: "The Go Blog", URL: "https://go.dev/blog/", Notes: "Worth reading"},
+		}}},
+	})
+	require.NoError(t, err)
+	require.Contains(t, md, "- [The Go Blog](https://go.dev/blog/) — Worth reading")
+}
+
+// TestMarkdownRendersCategorySections makes sure the configured categories
+// become sections of their own when the entries are not grouped by topic.
+func TestMarkdownRendersCategorySections(t *testing.T) {
+	md, err := Markdown(config.List{
+		Title: "Categorised",
+		Categories: []*config.Category{
+			{Name: "Editors", Items: []*config.Item{
+				{GHMeta: &github.RepoMeta{FullName: "a/one", URL: "https://github.com/a/one"}},
+			}},
+			{Name: "Linters", Items: []*config.Item{
+				{GHMeta: &github.RepoMeta{FullName: "b/two", URL: "https://github.com/b/two"}},
+			}},
+		},
+	})
+	require.NoError(t, err)
+	require.Contains(t, md, "### Editors")
+	require.Contains(t, md, "### Linters")
+	require.Contains(t, md, "- [Editors](#editors)")
+	require.Contains(t, md, "- [Linters](#linters)")
+	// The entries are not grouped by topic.
+	require.NotContains(t, md, "### Misc")
+}
+
+// TestMarkdownDeduplicatesRepositories makes sure a repository that is in
+// two categories is only rendered once.
+func TestMarkdownDeduplicatesRepositories(t *testing.T) {
+	md, err := Markdown(config.List{
+		Title: "Duplicated",
+		Categories: []*config.Category{
+			{Name: "First", Items: []*config.Item{
+				{GHMeta: &github.RepoMeta{FullName: "a/one", URL: "https://github.com/a/one"}},
+			}},
+			{Name: "Second", Items: []*config.Item{
+				{GHMeta: &github.RepoMeta{FullName: "a/one", URL: "https://github.com/a/one"}},
+				{GHMeta: &github.RepoMeta{FullName: "b/two", URL: "https://github.com/b/two"}},
+			}},
+		},
+	})
+	require.NoError(t, err)
+	require.Equal(t, 1, strings.Count(md, "https://github.com/a/one"))
+}
+
+// TestMarkdownPreservesCurationOrder makes sure the entries keep the order
+// they were curated in.
+func TestMarkdownPreservesCurationOrder(t *testing.T) {
+	md, err := Markdown(config.List{
+		Title: "Ordered",
+		Categories: []*config.Category{{Name: "Repositories", Items: []*config.Item{
+			{GHMeta: &github.RepoMeta{FullName: "z/last", URL: "https://github.com/z/last"}},
+			{GHMeta: &github.RepoMeta{FullName: "a/first", URL: "https://github.com/a/first"}},
+		}}},
+	})
+	require.NoError(t, err)
+	require.Less(t, strings.Index(md, "z/last"), strings.Index(md, "a/first"),
+		"the curation order must be preserved")
 }

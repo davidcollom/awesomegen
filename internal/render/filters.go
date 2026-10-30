@@ -38,11 +38,14 @@ func (e *LookupError) Unwrap() error { return e.Err }
 // Items that cannot be enriched are skipped, and the number of failures is
 // reported as a *LookupError so callers can decide whether a partially
 // enriched list is acceptable.
+//
+// The supplied list is not modified: the enriched copy is returned.
 func (e Enricher) EnrichAndFilter(ctx context.Context, list config.List) (config.List, error) {
 	if e.Now == nil {
 		e.Now = clockwork.NewRealClock()
 	}
-	out := list
+	out := cloneList(list)
+
 	var failures int
 	var total int
 	var lastErr error
@@ -56,7 +59,7 @@ func (e Enricher) EnrichAndFilter(ctx context.Context, list config.List) (config
 			if it == nil {
 				continue
 			}
-			if it.Type == config.ItemGitHub {
+			if it.IsGitHub() {
 				total++
 				meta, err := e.GH.GetRepo(ctx, it.Repo)
 				if err != nil {
@@ -80,8 +83,8 @@ func (e Enricher) EnrichAndFilter(ctx context.Context, list config.List) (config
 					e.Log.Info("skipping low-star repo", "repo", it.Repo, "stars", meta.Stars, "minStars", out.MinStars)
 					continue
 				}
-				if stale(meta.PushedAt, e.Now.Now(), out.StaleMonths) {
-					e.Log.Info("skipping stale repo", "repo", it.Repo, "pushedAt", meta.PushedAt, "staleMonths", out.StaleMonths)
+				if stale(meta.PushedAt, e.Now.Now(), out.StaleMonthsValue()) {
+					e.Log.Info("skipping stale repo", "repo", it.Repo, "pushedAt", meta.PushedAt, "staleMonths", out.StaleMonthsValue())
 					continue
 				}
 				it.GHMeta = &meta
@@ -96,6 +99,36 @@ func (e Enricher) EnrichAndFilter(ctx context.Context, list config.List) (config
 		return out, &LookupError{Failed: failures, Total: total, Err: lastErr}
 	}
 	return out, nil
+}
+
+// cloneList returns a deep copy of the categories and items of a list, so
+// enriching it never modifies the caller's configuration.
+func cloneList(list config.List) config.List {
+	out := list
+	if list.Categories == nil {
+		return out
+	}
+	cats := make([]*config.Category, len(list.Categories))
+	for i, c := range list.Categories {
+		if c == nil {
+			continue
+		}
+		cc := *c
+		if c.Items != nil {
+			items := make([]*config.Item, len(c.Items))
+			for j, it := range c.Items {
+				if it == nil {
+					continue
+				}
+				cp := *it
+				items[j] = &cp
+			}
+			cc.Items = items
+		}
+		cats[i] = &cc
+	}
+	out.Categories = cats
+	return out
 }
 
 // stale reports whether a repository has not been pushed to within the given

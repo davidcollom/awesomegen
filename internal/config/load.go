@@ -11,6 +11,8 @@ import (
 
 	"golang.org/x/text/language"
 	"gopkg.in/yaml.v3"
+
+	"github.com/davidcollom/awesomegen/internal/github"
 )
 
 // MaxConfigBytes bounds the size of a configuration file. The whole file is
@@ -118,13 +120,13 @@ func (l *List) validate(idx int, configUser string) error {
 	if l.MinStars < 0 {
 		return fmt.Errorf("lists[%d].min_stars: must not be negative", idx)
 	}
-	if l.StaleMonths < 0 {
+	if l.StaleMonths != nil && *l.StaleMonths < 0 {
 		return fmt.Errorf("lists[%d].stale_months: must not be negative", idx)
 	}
-	if l.TopTagsLimit < 0 {
+	if l.TopTagsLimit != nil && *l.TopTagsLimit < 0 {
 		return fmt.Errorf("lists[%d].top_tags_limit: must not be negative", idx)
 	}
-	if l.MinTagCount < 0 {
+	if l.MinTagCount != nil && *l.MinTagCount < 0 {
 		return fmt.Errorf("lists[%d].min_tag_count: must not be negative", idx)
 	}
 	if l.TopicGroupingMode != nil {
@@ -156,6 +158,40 @@ func (l *List) validate(idx int, configUser string) error {
 	// character set as a scraped star-list slug.
 	if l.Slug != "" && !slugPattern.MatchString(l.Slug) {
 		return fmt.Errorf("lists[%d].slug: %q must contain only letters, digits, dots, dashes and underscores", idx, l.Slug)
+	}
+	for ci, c := range l.Categories {
+		if c == nil {
+			return fmt.Errorf("lists[%d].categories[%d]: must not be null", idx, ci)
+		}
+		for ii, it := range c.Items {
+			if it == nil {
+				return fmt.Errorf("lists[%d].categories[%d].items[%d]: must not be null", idx, ci, ii)
+			}
+			switch it.Type {
+			case ItemGitHub:
+				if strings.TrimSpace(it.Repo) == "" {
+					return fmt.Errorf("lists[%d].categories[%d].items[%d].repo: is required for a github item", idx, ci, ii)
+				}
+				// A malformed repository name is rejected here: the
+				// lookup would fail later and the entry would be
+				// dropped from the list without a word.
+				if _, _, err := github.SplitOwnerRepo(it.Repo); err != nil {
+					return fmt.Errorf("lists[%d].categories[%d].items[%d].repo: %w", idx, ci, ii, err)
+				}
+			case ItemLink:
+				if strings.TrimSpace(it.URL) == "" {
+					return fmt.Errorf("lists[%d].categories[%d].items[%d].url: is required for a link item", idx, ci, ii)
+				}
+			case "":
+				// The type is inferred from repo or url when it is
+				// omitted, so one of them has to be present.
+				if strings.TrimSpace(it.Repo) == "" && strings.TrimSpace(it.URL) == "" {
+					return fmt.Errorf("lists[%d].categories[%d].items[%d]: repo: or url: is required", idx, ci, ii)
+				}
+			default:
+				return fmt.Errorf("lists[%d].categories[%d].items[%d].type: must be one of %q or %q", idx, ci, ii, ItemGitHub, ItemLink)
+			}
+		}
 	}
 	return nil
 }
@@ -206,6 +242,9 @@ func sortedExtensions() []string {
 }
 
 // applyDefaults fills in the values that were not set by the user.
+//
+// The optional numeric settings are pointers, so a value the user set
+// explicitly - including 0 - is never overwritten by a default.
 func (c *Config) applyDefaults() error {
 	for i := range c.Lists {
 		l := &c.Lists[i]
@@ -227,15 +266,28 @@ func (c *Config) applyDefaults() error {
 		if l.Locale == "" {
 			l.Locale = "en-GB"
 		}
-		if l.StaleMonths == 0 {
-			l.StaleMonths = 24
-		}
-		if l.TopTagsLimit == 0 {
-			l.TopTagsLimit = 10
-		}
-		if l.MinTagCount == 0 {
-			l.MinTagCount = 1
-		}
+		l.inferItemTypes()
 	}
 	return nil
+}
+
+// inferItemTypes fills in the type of items that do not declare one, so an
+// item is never silently dropped for omitting an optional field.
+func (l *List) inferItemTypes() {
+	for _, c := range l.Categories {
+		if c == nil {
+			continue
+		}
+		for _, it := range c.Items {
+			if it == nil || it.Type != "" {
+				continue
+			}
+			switch {
+			case it.Repo != "":
+				it.Type = ItemGitHub
+			case it.URL != "":
+				it.Type = ItemLink
+			}
+		}
+	}
 }

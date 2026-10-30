@@ -53,8 +53,34 @@ func TestListRepos(t *testing.T) {
 		require.Len(t, strings.Split(repo, "/"), 2, "unexpected repo %q", repo)
 	}
 
-	// The result is sorted and de-duplicated.
-	require.IsIncreasing(t, out)
+	// The result is de-duplicated and keeps the curation order of the star
+	// list: the entries are not sorted alphabetically, because the order
+	// the user arranged them in is the only curation signal a star list
+	// carries.
+	require.Len(t, out, len(uniqueStrings(out)))
+	for i := 1; i < len(out); i++ {
+		require.NotEqual(t, out[i-1], out[i], "the result contains a duplicate")
+	}
+	require.Equal(t, []string{
+		"davidcollom/awesomegen",
+		"cli/cli",
+		"golang/go",
+		"BurntSushi/ripgrep",
+	}, out)
+}
+
+// uniqueStrings returns the distinct values of a slice, preserving order.
+func uniqueStrings(in []string) []string {
+	seen := map[string]struct{}{}
+	var out []string
+	for _, s := range in {
+		if _, ok := seen[s]; ok {
+			continue
+		}
+		seen[s] = struct{}{}
+		out = append(out, s)
+	}
+	return out
 }
 
 func TestListReposPagination(t *testing.T) {
