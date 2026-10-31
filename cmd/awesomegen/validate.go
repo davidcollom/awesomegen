@@ -29,6 +29,12 @@ output paths are resolved as well, which catches the cases where two lists
 would write to the same file or where an output path would leave the
 directory of the configuration file.`,
 		Args: cobra.NoArgs,
+		PreRunE: func(cmd *cobra.Command, _ []string) error {
+			// The command never writes a file, so a dry run would
+			// change nothing: the flag would only pretend that the
+			// run is a rehearsal.
+			return rejectUnsupportedFlags(cmd, flagConfig, flagVerbose)
+		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runValidate(cmd, opts)
 		},

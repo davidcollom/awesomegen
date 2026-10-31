@@ -21,6 +21,12 @@ func newVersionCommand() *cobra.Command {
 		Use:   "version",
 		Short: "Print the version of awesomegen",
 		Args:  cobra.NoArgs,
+		PreRunE: func(cmd *cobra.Command, _ []string) error {
+			// The command prints the build information of the binary:
+			// it reads no configuration file and writes nothing, so
+			// both flags would only pretend to do something.
+			return rejectUnsupportedFlags(cmd, flagVerbose)
+		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			// The information is built in a buffer and written once, so
 			// that a broken pipe is reported as an error instead of

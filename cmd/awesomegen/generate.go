@@ -27,6 +27,11 @@ func newGenerateCommand(opts *options) *cobra.Command {
 		Use:   "generate",
 		Short: "Generate the README(s) from the Star Lists",
 		Args:  cobra.NoArgs,
+		PreRunE: func(cmd *cobra.Command, _ []string) error {
+			// The command generates the README files, so it uses every
+			// shared flag.
+			return rejectUnsupportedFlags(cmd, sharedFlags...)
+		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runGenerate(cmd, opts)
 		},

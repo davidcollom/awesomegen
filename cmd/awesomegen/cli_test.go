@@ -285,6 +285,57 @@ func TestGenerateRejectsAnInvalidConfig(t *testing.T) {
 	require.Error(t, err)
 }
 
+// TestCommandsRejectTheFlagsTheyDoNotUse makes sure that a flag a command
+// does not use is refused instead of being ignored.
+//
+// The flags are persistent flags of the root command, so every subcommand
+// accepts them. A flag that is accepted and ignored lies to the user:
+// "validate --dry-run" looks like a rehearsal, and it is not.
+func TestCommandsRejectTheFlagsTheyDoNotUse(t *testing.T) {
+	path := writeConfig(t, validConfig)
+
+	for _, tc := range []struct {
+		name string
+		args []string
+		want string
+	}{
+		{"validate refuses the dry run", []string{"validate", "--config", path, "--dry-run"}, "--dry-run is not used by the validate command"},
+		{"schema refuses the config file", []string{"schema", "--config", path}, "--config is not used by the schema command"},
+		{"schema refuses the dry run", []string{"schema", "--dry-run"}, "--dry-run is not used by the schema command"},
+		{"version refuses the config file", []string{"version", "--config", path}, "--config is not used by the version command"},
+		{"version refuses the dry run", []string{"version", "--dry-run"}, "--dry-run is not used by the version command"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := run(t, tc.args...)
+			require.Error(t, err)
+			// The message names the flag and the command, so that the
+			// user knows what to change.
+			require.Contains(t, err.Error(), tc.want)
+		})
+	}
+}
+
+// TestCommandsAcceptTheFlagsTheyUse makes sure that the flags a command does
+// use keep working.
+//
+// The check of the unused flags must not refuse the flags that the command
+// honours.
+func TestCommandsAcceptTheFlagsTheyUse(t *testing.T) {
+	path := writeConfig(t, validConfig)
+
+	out, err := run(t, "validate", "--config", path)
+	require.NoError(t, err)
+	require.Contains(t, out, "is valid")
+
+	out, err = run(t, "schema")
+	require.NoError(t, err)
+	require.NotEmpty(t, out)
+
+	out, err = run(t, "version")
+	require.NoError(t, err)
+	require.Contains(t, out, "awesomegen ")
+}
+
 func TestUnknownSubcommandFails(t *testing.T) {
 	_, err := run(t, "nope")
 	require.Error(t, err)

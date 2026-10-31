@@ -93,11 +93,16 @@ configuration file.`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runGenerate(cmd, opts)
 		},
+		PreRunE: func(cmd *cobra.Command, _ []string) error {
+			// The root command generates the README files, so it uses
+			// every shared flag.
+			return rejectUnsupportedFlags(cmd, sharedFlags...)
+		},
 	}
 
-	root.PersistentFlags().StringVarP(&opts.configPath, "config", "c", "config.yaml", "Path to the configuration file")
-	root.PersistentFlags().BoolVar(&opts.verbose, "verbose", false, "Log what is happening in more detail")
-	root.PersistentFlags().BoolVar(&opts.dryRun, "dry-run", false, "Print the rendered README(s) instead of writing them")
+	root.PersistentFlags().StringVarP(&opts.configPath, flagConfig, "c", "config.yaml", "Path to the configuration file")
+	root.PersistentFlags().BoolVar(&opts.verbose, flagVerbose, false, "Log what is happening in more detail")
+	root.PersistentFlags().BoolVar(&opts.dryRun, flagDryRun, false, "Print the rendered README(s) instead of writing them")
 
 	root.AddCommand(newGenerateCommand(opts))
 	root.AddCommand(newValidateCommand(opts))
