@@ -509,3 +509,27 @@ func TestLoadRejectsAnEmptyFile(t *testing.T) {
 		require.NotContains(t, err.Error(), "EOF")
 	}
 }
+
+func TestLoadAcceptsEmptyTrailingDocuments(t *testing.T) {
+	body := "version: 1\nuser: demo\nlists:\n  - slug: tools\n    title: Tools\n"
+	want, err := config.Load(writeConfig(t, body))
+	require.NoError(t, err)
+	for _, suffix := range []string{"---", "---\n", "--- # end\n# comment\n", "---\n---\n"} {
+		t.Run(suffix, func(t *testing.T) {
+			got, err := config.Load(writeConfig(t, body+suffix))
+			require.NoError(t, err)
+			require.Equal(t, want, got)
+		})
+	}
+}
+
+func TestLoadRejectsContentAfterEmptyTrailingDocument(t *testing.T) {
+	body := "version: 1\nuser: demo\nlists:\n  - slug: tools\n    title: Tools\n---\n"
+	for _, suffix := range []string{"---\nuser: other\n", "---\n{}\n", "---\n[]\n", "---\nnull\n", "---\n~\n", "---\n'null'\n", "---\n[broken\n", "---\n!!null \"\"\n"} {
+		t.Run(suffix, func(t *testing.T) {
+			_, err := config.Load(writeConfig(t, body+suffix))
+			require.Error(t, err)
+			require.Contains(t, err.Error(), "parse config")
+		})
+	}
+}
