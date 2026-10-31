@@ -127,6 +127,18 @@ Never resolve a review comment without either a fix in the pull request or
 an issue that tracks the finding. A comment that is answered with "fixed
 later" and without an issue is a finding that is lost.
 
+### Listing the findings
+
+The findings of a pull request are read from the API of GitHub:
+
+```bash
+gh api repos/davidcollom/awesomegen/pulls/<pr>/comments
+```
+
+The badge of the Codex reviewer is in the body of the comment, so the grade
+of a finding can be read from it. A finding of Copilot carries no badge:
+grade it by hand and treat it as the grade it would have.
+
 ### Answering a finding
 
 Every finding gets an answer, even when it is deferred. The answer says
