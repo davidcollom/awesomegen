@@ -164,6 +164,21 @@ CI runs on every push to `main` and on every pull request: `gofmt`, `go vet`,
 of Go that `go.mod` requires, a cross compilation for every release target, a
 container build and `govulncheck`.
 
+### The review findings
+
+The reviewers answer a pull request with findings that carry a grade: `P0`
+(critical), `P1` (high), `P2` (medium) and `P3` (low).
+
+Every high and medium finding - `P0`, `P1` and `P2` - is fixed in the pull
+request that carries it, before the pull request is merged. A low finding -
+`P3` - may be deferred, but only when an issue is opened for it: the issue
+names the file and the line, and the pull request links to it. The deferred
+fix then lands in a pull request of its own.
+
+[AGENTS.md](AGENTS.md) describes the whole path of a change, from the issue
+to the answer to a finding, and it is the reference for an agent that works
+on this repository.
+
 ---
 
 ## How a release is cut
