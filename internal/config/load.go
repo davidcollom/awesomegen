@@ -72,13 +72,21 @@ func Load(path string) (Config, error) {
 
 	// The decoder stops after the first document, so the rest of the file
 	// would be ignored without a word. A configuration is a single
-	// document, so a second one is reported.
-	var extra yaml.Node
-	if err := dec.Decode(&extra); !errors.Is(err, io.EOF) {
+	// document, so a second one that holds content is reported. A
+	// document that holds nothing is accepted: a file that ends with "---"
+	// starts one, and that is a common way to write a configuration.
+	for {
+		var extra yaml.Node
+		err := dec.Decode(&extra)
+		if errors.Is(err, io.EOF) {
+			break
+		}
 		if err != nil {
 			return Config{}, fmt.Errorf("parse config %s: %w", path, err)
 		}
-		return Config{}, fmt.Errorf("parse config %s: the file must hold exactly one YAML document", path)
+		if !isEmptyDocument(&extra) {
+			return Config{}, fmt.Errorf("parse config %s: the file must hold exactly one YAML document", path)
+		}
 	}
 
 	if err := c.validate(); err != nil {
@@ -88,6 +96,22 @@ func Load(path string) (Config, error) {
 		return Config{}, fmt.Errorf("invalid config %s: %w", path, err)
 	}
 	return c, nil
+}
+
+// isEmptyDocument reports whether a YAML document holds nothing.
+//
+// The decoder reports a document that holds nothing as the null value, so
+// that is what is looked for. Every spelling of the null - an empty
+// document, "null", "~" and "!!null" - is the same value and carries no
+// configuration, so all of them are accepted. A document that holds a
+// map, a sequence or a value carries content, and a second document that
+// carries content is reported.
+func isEmptyDocument(doc *yaml.Node) bool {
+	if doc.Kind != yaml.DocumentNode || len(doc.Content) != 1 {
+		return false
+	}
+	root := doc.Content[0]
+	return root.Kind == yaml.ScalarNode && root.ShortTag() == "!!null"
 }
 
 func (c *Config) validate() error {

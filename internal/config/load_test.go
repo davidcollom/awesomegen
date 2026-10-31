@@ -401,6 +401,61 @@ lists:
 	require.Contains(t, err.Error(), "exactly one YAML document")
 }
 
+// TestLoadRejectsASecondDocumentWithContent makes sure that a second
+// document that holds content is reported, whatever shape it has.
+//
+// Only a document that carries nothing is accepted, so a second document
+// that holds a map, a sequence or a value is reported.
+func TestLoadRejectsASecondDocumentWithContent(t *testing.T) {
+	for _, body := range []string{
+		"version: 1\nuser: d\nlists:\n  - slug: s\n    title: T\n---\nfoo: bar\n",
+		"version: 1\nuser: d\nlists:\n  - slug: s\n    title: T\n---\n- a\n",
+		"version: 1\nuser: d\nlists:\n  - slug: s\n    title: T\n---\nhello\n",
+		"version: 1\nuser: d\nlists:\n  - slug: s\n    title: T\n---\n\"\"\n",
+	} {
+		_, err := config.Load(writeConfig(t, body))
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "exactly one YAML document")
+	}
+}
+
+// TestLoadAcceptsATrailingDocumentSeparator makes sure that a configuration
+// file that ends with a document separator is accepted.
+//
+// A trailing "---" starts a second YAML document, and that document holds
+// nothing. The file still holds exactly one document with content in it, so
+// refusing it blocked a perfectly ordinary configuration.
+func TestLoadAcceptsATrailingDocumentSeparator(t *testing.T) {
+	for _, body := range []string{
+		"version: 1\nuser: d\nlists:\n  - slug: s\n    title: T\n---\n",
+		"version: 1\nuser: d\nlists:\n  - slug: s\n    title: T\n---",
+		"version: 1\nuser: d\nlists:\n  - slug: s\n    title: T\n---\n# a comment\n",
+		"version: 1\nuser: d\nlists:\n  - slug: s\n    title: T\n---\n   \n",
+	} {
+		cfg, err := config.Load(writeConfig(t, body))
+		require.NoError(t, err)
+		require.Len(t, cfg.Lists, 1)
+		require.Equal(t, "s", cfg.Lists[0].Slug)
+	}
+}
+
+// TestLoadAcceptsATrailingNullDocument makes sure that a second document
+// that holds the null value is accepted.
+//
+// The null value carries no configuration, so a document that holds it
+// holds nothing, whichever way the null is spelled.
+func TestLoadAcceptsATrailingNullDocument(t *testing.T) {
+	for _, body := range []string{
+		"version: 1\nuser: d\nlists:\n  - slug: s\n    title: T\n---\nnull\n",
+		"version: 1\nuser: d\nlists:\n  - slug: s\n    title: T\n---\n~\n",
+		"version: 1\nuser: d\nlists:\n  - slug: s\n    title: T\n---\n!!null\n",
+	} {
+		cfg, err := config.Load(writeConfig(t, body))
+		require.NoError(t, err)
+		require.Len(t, cfg.Lists, 1)
+	}
+}
+
 // TestLoadRejectsInvalidItems makes sure an item that cannot be rendered is
 // reported instead of being dropped.
 func TestLoadRejectsInvalidItems(t *testing.T) {
