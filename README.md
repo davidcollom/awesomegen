@@ -285,6 +285,20 @@ Cobra also provides `awesomegen help`, `awesomegen completion`, `--help` and `--
 | `--verbose` | `false` | Log what is happening in more detail. The messages go to the standard error stream. |
 | `--dry-run` | `false` | Print the rendered README(s) to the standard output instead of writing them. The comment above the document names the file it would have been written to. |
 
+The flags are persistent flags of the root command, so every command accepts
+them. A command that does not use a flag refuses it instead of ignoring it:
+`awesomegen validate --dry-run` fails with `--dry-run is not used by the
+validate command`. A flag that is ignored is a flag that lies, and a user who
+wrote `--dry-run` expects the run to be different.
+
+| Command | `--config` | `--verbose` | `--dry-run` |
+| --- | --- | --- | --- |
+| `awesomegen` | yes | yes | yes |
+| `awesomegen generate` | yes | yes | yes |
+| `awesomegen validate` | yes | yes | no |
+| `awesomegen schema` | no | yes | no |
+| `awesomegen version` | no | yes | no |
+
 ### `awesomegen generate`
 
 Scrapes the Star Lists, enriches the repositories, applies the filters and

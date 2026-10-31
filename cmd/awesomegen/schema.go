@@ -22,6 +22,12 @@ func newSchemaCommand() *cobra.Command {
 The schema is the one that the configuration file is checked against in an
 editor. It is embedded in the binary, so this command works offline.`,
 		Args: cobra.NoArgs,
+		PreRunE: func(cmd *cobra.Command, _ []string) error {
+			// The schema is embedded in the binary: the command reads
+			// no configuration file and writes nothing, so both flags
+			// would only pretend to do something.
+			return rejectUnsupportedFlags(cmd, flagVerbose)
+		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			// The schema is written verbatim, so that it can be piped
 			// into a file or a validator without being altered.
