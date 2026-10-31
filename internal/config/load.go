@@ -70,13 +70,20 @@ func Load(path string) (Config, error) {
 		return Config{}, fmt.Errorf("parse config %s: %w", path, err)
 	}
 
-	// The decoder stops after the first document, so the rest of the file
-	// would be ignored without a word. A configuration is a single
-	// document, so a second one is reported.
-	var extra yaml.Node
-	if err := dec.Decode(&extra); !errors.Is(err, io.EOF) {
-		if err != nil {
+	// Consume the entire stream: trailing empty documents carry no settings,
+	// but must not hide a later document with content or invalid YAML.
+	for {
+		var extra yaml.Node
+		if err := dec.Decode(&extra); errors.Is(err, io.EOF) {
+			break
+		} else if err != nil {
 			return Config{}, fmt.Errorf("parse config %s: %w", path, err)
+		}
+		if len(extra.Content) == 1 {
+			node := extra.Content[0]
+			if node.Kind == yaml.ScalarNode && node.Tag == "!!null" && node.Value == "" && node.Style == 0 {
+				continue
+			}
 		}
 		return Config{}, fmt.Errorf("parse config %s: the file must hold exactly one YAML document", path)
 	}
