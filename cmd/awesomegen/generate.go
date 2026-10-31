@@ -323,16 +323,35 @@ func resolveOutputsIn(cfg config.Config, base string, policy outputPolicy) ([]st
 // caseInsensitiveDir reports whether the file system that holds dir
 // distinguishes names that differ only in case.
 //
-// The probe uses a file that exists: on a file system that ignores the
-// case, a name that differs from it only in case resolves to the same
-// file, and on a file system that does not, the name does not exist.
+// The probe uses the names that are there: on a file system that ignores the
+// case, a name that differs from one of them only in case resolves to the
+// same file, and on a file system that does not, the name does not exist.
 //
 // A directory that cannot be read is reported as case-sensitive, which is
 // the safe answer: two outputs that differ only in case are then allowed,
 // exactly as they are on a file system that tells them apart.
 func caseInsensitiveDir(dir string) bool {
+	return caseInsensitiveDirWith(dir, existsOnDisk)
+}
+
+// caseInsensitiveDirWith reports whether the file system that holds dir
+// distinguishes names that differ only in case.
+//
+// The lookup of a name is injected, so that a test can play a file system
+// that ignores the case on a runner whose file system does not.
+//
+// Every name of the directory is probed, because the first name that
+// carries letters does not have to be the one that gives the answer away.
+// A name that cannot be resolved - a symbolic link that dangles, for
+// example - is not found on a file system that ignores the case either, and
+// a probe that stops at that name reports a file system that tells the
+// cases apart. Two outputs that differ only in case are then allowed, and
+// the second one overwrites the first.
+func caseInsensitiveDirWith(dir string, exists func(string) bool) bool {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
+		// A directory that cannot be read is reported as case-sensitive,
+		// which is the safe answer.
 		return false
 	}
 	for _, e := range entries {
@@ -343,14 +362,20 @@ func caseInsensitiveDir(dir string) bool {
 			// its variant by the case.
 			continue
 		}
-		if _, err := os.Stat(filepath.Join(dir, variant)); err == nil {
+		if exists(filepath.Join(dir, variant)) {
 			return true
 		}
-		// The first file that carries letters decides: on a file system
-		// that ignores the case, its variant exists as well.
-		return false
 	}
 	return false
+}
+
+// existsOnDisk reports whether the file system holds a file at path.
+//
+// The link is followed, exactly as the write of a README follows it: a
+// symbolic link that dangles is not there.
+func existsOnDisk(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
 }
 
 // swapCase returns name with the case of its letters flipped.
