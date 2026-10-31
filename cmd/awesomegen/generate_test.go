@@ -353,3 +353,60 @@ func TestGenerateWritesTheDocumentKeepsTheFileMode(t *testing.T) {
 	require.Equal(t, os.FileMode(0o600), fi.Mode().Perm(),
 		"the mode of the file that was replaced is kept")
 }
+
+// TestGenerateWritesANewFileWithTheModeOfTheUmask makes sure that the mode
+// of a file that did not exist yet is the one the umask of the user produces.
+//
+// The umask only applies while a file is created: a mode that is set
+// afterwards ignores it. A checkout with a restrictive umask - 077, for
+// example - ends up with a README that every user of the machine may read,
+// when the mode of the temporary file is widened to 0644 explicitly.
+//
+// The umask belongs to the whole process, so the test does not run in
+// parallel with the other tests, and the previous umask is restored when the
+// test is done.
+func TestGenerateWritesANewFileWithTheModeOfTheUmask(t *testing.T) {
+	setUmask(t, 0o077)
+
+	dir := t.TempDir()
+	cfgPath := writeConfigIn(t, dir, oneListConfig)
+
+	opts := &options{configPath: cfgPath}
+	_, err := runGenerateWithArgs(t, opts, testGenerator(t))
+	require.NoError(t, err)
+
+	fi, err := os.Stat(filepath.Join(dir, "README.md"))
+	require.NoError(t, err)
+	// The umask 077 leaves the file to its owner alone: neither the group
+	// nor the others may read it.
+	require.Equal(t, os.FileMode(0o600), fi.Mode().Perm(),
+		"the umask of the user decides the mode of a new file")
+}
+
+// TestGenerateKeepsTheModeOfAReplacedFileUnderARestrictiveUmask makes sure
+// that the file that is replaced keeps its own mode, whatever the umask of
+// the user is.
+//
+// The mode of a file that already exists is the choice of the user who
+// curated it, and a restrictive umask must not widen it.
+func TestGenerateKeepsTheModeOfAReplacedFileUnderARestrictiveUmask(t *testing.T) {
+	setUmask(t, 0o077)
+
+	dir := t.TempDir()
+	cfgPath := writeConfigIn(t, dir, oneListConfig)
+
+	existing := filepath.Join(dir, "README.md")
+	require.NoError(t, os.WriteFile(existing, []byte("curated\n"), 0o644))
+	// The umask applies to the file that the test creates as well, so the
+	// mode of the file is set explicitly.
+	require.NoError(t, os.Chmod(existing, 0o644))
+
+	opts := &options{configPath: cfgPath}
+	_, err := runGenerateWithArgs(t, opts, testGenerator(t))
+	require.NoError(t, err)
+
+	fi, err := os.Stat(existing)
+	require.NoError(t, err)
+	require.Equal(t, os.FileMode(0o644), fi.Mode().Perm(),
+		"the mode of the file that was replaced is kept")
+}
