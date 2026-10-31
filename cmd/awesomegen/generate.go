@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
@@ -385,13 +387,14 @@ func writeFileAtomic(root, path string, data []byte) error {
 
 	// The mode of the file that is replaced is kept: a README that only its
 	// owner may read does not become readable by everybody. A file that does
-	// not exist yet is written with the mode of a public document.
-	mode := os.FileMode(0o644)
+	// not exist yet is written with the mode the umask of the user produces,
+	// so that a restrictive umask keeps the new file private.
+	mode, replaced := os.FileMode(0), false
 	if fi, err := os.Stat(path); err == nil && fi.Mode().IsRegular() {
-		mode = fi.Mode().Perm()
+		mode, replaced = fi.Mode().Perm(), true
 	}
 
-	tmp, err := os.CreateTemp(dir, ".awesomegen-*.tmp")
+	tmp, err := createTempFile(dir)
 	if err != nil {
 		return fmt.Errorf("create temporary file in %s: %w", dir, err)
 	}
@@ -413,8 +416,12 @@ func writeFileAtomic(root, path string, data []byte) error {
 	if err := tmp.Close(); err != nil {
 		return fmt.Errorf("close %s: %w", tmpName, err)
 	}
-	if err := os.Chmod(tmpName, mode); err != nil {
-		return fmt.Errorf("chmod %s: %w", tmpName, err)
+	// The umask only applies while a file is created, so the mode of a file
+	// that is replaced is set explicitly: the file keeps the mode it had.
+	if replaced {
+		if err := os.Chmod(tmpName, mode); err != nil {
+			return fmt.Errorf("chmod %s: %w", tmpName, err)
+		}
 	}
 	if err := os.Rename(tmpName, path); err != nil {
 		return fmt.Errorf("rename %s to %s: %w", tmpName, path, err)
@@ -423,6 +430,55 @@ func writeFileAtomic(root, path string, data []byte) error {
 	// platform can do that, so a failure is not fatal.
 	syncDir(dir)
 	return nil
+}
+
+// tempFileNames is the number of names that are tried before the creation of
+// a temporary file is given up.
+//
+// The names are random, so a name that is taken is rare.
+const tempFileNames = 10
+
+// createTempFile creates a temporary file in dir, whose name tells that it
+// belongs to a run of the generator.
+//
+// The file is created with the mode 0666, so that the umask of the user
+// decides the mode of a file that is written for the first time. The
+// temporary file of os.CreateTemp always has the mode 0600, and a mode that
+// is set afterwards ignores the umask: a checkout with a restrictive umask
+// would end up with a README that every user of the machine may read.
+//
+// The name is unique and the file is created exclusively, so that two runs
+// cannot end up with the same file.
+func createTempFile(dir string) (*os.File, error) {
+	for range tempFileNames {
+		name, err := tempFileName()
+		if err != nil {
+			return nil, err
+		}
+		path := filepath.Join(dir, ".awesomegen-"+name+".tmp")
+		f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0o666)
+		if err == nil {
+			return f, nil
+		}
+		// A name that is taken is a leftover of another run, so the next
+		// name is tried.
+		if !os.IsExist(err) {
+			return nil, err
+		}
+	}
+	return nil, fmt.Errorf("no free name for a temporary file in %s", dir)
+}
+
+// tempFileName returns a random name for a temporary file.
+//
+// The name only has to be unique in the directory of the output, so that two
+// runs cannot pick the same one.
+func tempFileName() (string, error) {
+	var buf [8]byte
+	if _, err := rand.Read(buf[:]); err != nil {
+		return "", fmt.Errorf("read random bytes: %w", err)
+	}
+	return hex.EncodeToString(buf[:]), nil
 }
 
 // syncDir flushes the directory entry of a renamed file to the disk.
