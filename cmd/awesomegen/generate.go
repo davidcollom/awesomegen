@@ -23,19 +23,17 @@ import (
 // The flags are inherited from the root command, so that the plain
 // "awesomegen" invocation and "awesomegen generate" behave the same way.
 func newGenerateCommand(opts *options) *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "generate",
 		Short: "Generate the README(s) from the Star Lists",
 		Args:  cobra.NoArgs,
-		PreRunE: func(cmd *cobra.Command, _ []string) error {
-			// The command generates the README files, so it uses every
-			// shared flag.
-			return rejectUnsupportedFlags(cmd, sharedFlags...)
-		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runGenerate(cmd, opts)
 		},
 	}
+	// The command generates the README files, so it uses every shared flag.
+	usesSharedFlags(cmd, flagConfig, flagDryRun)
+	return cmd
 }
 
 // generator holds the collaborators of a generation run.

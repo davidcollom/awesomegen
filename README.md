@@ -298,6 +298,13 @@ wrote `--dry-run` expects the run to be different.
 | `awesomegen validate` | yes | yes | no |
 | `awesomegen schema` | no | yes | no |
 | `awesomegen version` | no | yes | no |
+| `awesomegen help` | no | yes | no |
+| `awesomegen completion` | no | yes | no |
+
+The flags are shared, so a flag that is written before the name of the
+subcommand belongs to the subcommand as well: `awesomegen --dry-run validate`
+is the same request as `awesomegen validate --dry-run`, and it is refused for
+the same reason.
 
 ### `awesomegen generate`
 

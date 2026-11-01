@@ -291,6 +291,9 @@ func TestGenerateRejectsAnInvalidConfig(t *testing.T) {
 // The flags are persistent flags of the root command, so every subcommand
 // accepts them. A flag that is accepted and ignored lies to the user:
 // "validate --dry-run" looks like a rehearsal, and it is not.
+//
+// The table covers the shapes a flag can be written in, so that a check that
+// only catches one of them does not pass the suite.
 func TestCommandsRejectTheFlagsTheyDoNotUse(t *testing.T) {
 	path := writeConfig(t, validConfig)
 
@@ -300,10 +303,20 @@ func TestCommandsRejectTheFlagsTheyDoNotUse(t *testing.T) {
 		want string
 	}{
 		{"validate refuses the dry run", []string{"validate", "--config", path, "--dry-run"}, "--dry-run is not used by the validate command"},
+		{"validate refuses the dry run with a value", []string{"validate", "--dry-run=true"}, "--dry-run is not used by the validate command"},
+		{"validate refuses the dry run that is switched off", []string{"validate", "--dry-run=false"}, "--dry-run is not used by the validate command"},
 		{"schema refuses the config file", []string{"schema", "--config", path}, "--config is not used by the schema command"},
+		{"schema refuses the config file with a value", []string{"schema", "--config=" + path}, "--config is not used by the schema command"},
+		{"schema refuses the short config file", []string{"schema", "-c", path}, "--config is not used by the schema command"},
 		{"schema refuses the dry run", []string{"schema", "--dry-run"}, "--dry-run is not used by the schema command"},
 		{"version refuses the config file", []string{"version", "--config", path}, "--config is not used by the version command"},
 		{"version refuses the dry run", []string{"version", "--dry-run"}, "--dry-run is not used by the version command"},
+		{"the help command refuses the dry run", []string{"help", "--dry-run"}, "--dry-run is not used by the help command"},
+		{"the completion command refuses the dry run", []string{"completion", "--dry-run"}, "--dry-run is not used by the completion command"},
+		{"the completion of a shell refuses the config file", []string{"completion", "bash", "--config", path}, "--config is not used by the bash command"},
+		// The flags are shared, so a flag that is written before the
+		// name of the subcommand belongs to the subcommand as well.
+		{"a flag before the subcommand belongs to the subcommand", []string{"--dry-run", "validate"}, "--dry-run is not used by the validate command"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			_, err := run(t, tc.args...)
@@ -334,6 +347,11 @@ func TestCommandsAcceptTheFlagsTheyUse(t *testing.T) {
 	out, err = run(t, "version")
 	require.NoError(t, err)
 	require.Contains(t, out, "awesomegen ")
+
+	// The verbose flag is read by the pre-run hook of the root command,
+	// so every command honours it.
+	_, err = run(t, "schema", "--verbose")
+	require.NoError(t, err)
 }
 
 func TestUnknownSubcommandFails(t *testing.T) {

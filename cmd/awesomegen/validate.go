@@ -18,7 +18,7 @@ import (
 // and no request is sent to GitHub, so the command can be used in a
 // pre-commit hook or in a pull request check.
 func newValidateCommand(opts *options) *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "validate",
 		Short: "Check the configuration file without contacting GitHub",
 		Long: `Check the configuration file without contacting GitHub.
@@ -29,16 +29,14 @@ output paths are resolved as well, which catches the cases where two lists
 would write to the same file or where an output path would leave the
 directory of the configuration file.`,
 		Args: cobra.NoArgs,
-		PreRunE: func(cmd *cobra.Command, _ []string) error {
-			// The command never writes a file, so a dry run would
-			// change nothing: the flag would only pretend that the
-			// run is a rehearsal.
-			return rejectUnsupportedFlags(cmd, flagConfig, flagVerbose)
-		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runValidate(cmd, opts)
 		},
 	}
+	// The command reads the configuration file, but it never writes one, so
+	// a dry run would change nothing.
+	usesSharedFlags(cmd, flagConfig)
+	return cmd
 }
 
 // runValidate checks the configuration and prints a summary of it.

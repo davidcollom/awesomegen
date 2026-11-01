@@ -17,16 +17,10 @@ import (
 // without them - "go run", for example - and are left out of the output
 // then.
 func newVersionCommand() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "version",
 		Short: "Print the version of awesomegen",
 		Args:  cobra.NoArgs,
-		PreRunE: func(cmd *cobra.Command, _ []string) error {
-			// The command prints the build information of the binary:
-			// it reads no configuration file and writes nothing, so
-			// both flags would only pretend to do something.
-			return rejectUnsupportedFlags(cmd, flagVerbose)
-		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			// The information is built in a buffer and written once, so
 			// that a broken pipe is reported as an error instead of
@@ -45,4 +39,8 @@ func newVersionCommand() *cobra.Command {
 			return err
 		},
 	}
+	// The command prints the build information of the binary: it reads no
+	// configuration file and writes nothing, so both flags would only
+	// pretend to do something.
+	return cmd
 }

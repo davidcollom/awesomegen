@@ -82,23 +82,27 @@ configuration file.`,
 		SilenceUsage:  true,
 		SilenceErrors: false,
 		Args:          cobra.NoArgs,
-		PersistentPreRun: func(cmd *cobra.Command, _ []string) {
+		// The pre-run hook of the root command runs for every command of
+		// the tree, so this is the place where a flag that a command does
+		// not use is refused - also for the commands that cobra adds
+		// itself.
+		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
 			if opts.verbose {
 				// The detailed messages are logged at level 1, so they
 				// only appear when they are asked for.
 				stdr.SetVerbosity(1)
 			}
 			cmd.SetContext(context.WithValue(cmd.Context(), loggerKey{}, newLogger()))
+			return rejectUnsupportedFlags(cmd)
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runGenerate(cmd, opts)
 		},
-		PreRunE: func(cmd *cobra.Command, _ []string) error {
-			// The root command generates the README files, so it uses
-			// every shared flag.
-			return rejectUnsupportedFlags(cmd, sharedFlags...)
-		},
 	}
+
+	// The root command generates the README files, so it uses every shared
+	// flag.
+	usesSharedFlags(root, flagConfig, flagDryRun)
 
 	root.PersistentFlags().StringVarP(&opts.configPath, flagConfig, "c", "config.yaml", "Path to the configuration file")
 	root.PersistentFlags().BoolVar(&opts.verbose, flagVerbose, false, "Log what is happening in more detail")
@@ -108,6 +112,20 @@ configuration file.`,
 	root.AddCommand(newValidateCommand(opts))
 	root.AddCommand(newSchemaCommand())
 	root.AddCommand(newVersionCommand())
+
+	// The completion command of cobra only prints its help, so it has no
+	// run function and cobra does not run the pre-run hook of the root
+	// command for it. The hook is what refuses the flags that a command
+	// does not use, so the command is given a run function that prints the
+	// help, exactly as before.
+	root.InitDefaultCompletionCmd()
+	for _, cmd := range root.Commands() {
+		if cmd.Name() == "completion" {
+			cmd.RunE = func(c *cobra.Command, _ []string) error {
+				return c.Help()
+			}
+		}
+	}
 
 	return root
 }
