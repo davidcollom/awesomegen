@@ -164,7 +164,11 @@ func runGenerateWith(cmd *cobra.Command, opts *options, gen *generator) error {
 			// repository, and committing that empty result would wipe out a
 			// curated list.
 			if errors.Is(err, render.ErrNoEntries) {
-				return fmt.Errorf("list %q produced no entries; refusing to overwrite %s with an empty README", list.Slug, outputs[i])
+				name := list.Slug
+				if name == "" {
+					name = list.Title
+				}
+				return fmt.Errorf("list %q produced no entries; refusing to overwrite %s with an empty README", name, outputs[i])
 			}
 			return err
 		}
