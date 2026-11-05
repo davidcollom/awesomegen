@@ -22,14 +22,17 @@ gh issue view 102 --repo davidcollom/awesomegen
 ```
 
 Pick the issue, work on it, close it with the pull request. **One issue per
-pull request.** A pull request that fixes two issues is two pull requests.
+pull request.** A pull request that fixes two issues is two pull requests. A
+pull request that fixes nothing at all - a change of the documentation, for
+instance - needs no issue.
 
 ---
 
-## Grade the issue before you start
+## Grade the work before you start
 
-Not every issue is worth the same day. Grade the issue you picked with the
-same scale the reviewers use, and say the grade in the pull request body:
+Not every piece of work is worth the same day. Grade the work you picked
+with the scale below - the one the issues of the tracker are graded with -
+and say the grade in the pull request body:
 
 | Grade | Meaning                                                                    |
 | ----- | -------------------------------------------------------------------------- |
@@ -42,25 +45,62 @@ A **P0** goes first, even when it is harder than the rest of the batch. When
 a batch is picked, work on one P0 and one or two P2 items, not on five P3
 items.
 
+The scale above grades the work itself. A finding of a review carries a grade
+of its own - critical, high, medium or low - and that one is described in the
+next section.
+
 ---
 
 ## Before you open the pull request
 
-Run the whole suite. `make` runs these targets, but the underlying commands
-are the ones that matter:
+Run the checks that CI runs. The `make` targets cover most of them, but the
+underlying commands are the ones that matter:
 
 ```bash
+# the lint job
 gofmt -l .                                              # must print nothing
 go vet ./...
-go test ./...
 go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0 run
-go generate ./... && git diff --exit-code -- config-schema.json
+go generate ./... && git diff --exit-code HEAD -- config-schema.json
+
+# the test job
+go test ./...
+CGO_ENABLED=1 go test -race ./...                       # needs a C compiler
+
+# the govulncheck job
+go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
+
+# the platforms the test job runs on
+GOOS=windows go vet ./...
+GOOS=darwin go vet ./...
 ```
 
-The last one only matters when the configuration types change: the schema is
-generated, so the regenerated file belongs into the same commit.
+These are the commands of the `lint`, `test` and `govulncheck` jobs of
+`.github/workflows/ci.yml`. The `test` job runs the suite on Linux, macOS
+and Windows, and it uses the race detector everywhere but on Windows, where
+the image does not guarantee a C compiler. The last two commands check the
+two other platforms locally, because a `go test` for them needs a runner of
+their own.
 
-Then check these four things:
+The `build` job cross compiles every released target and builds the
+container image. The cross compilation is cheap, so run it as well:
+
+```bash
+CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -o /dev/null ./cmd/awesomegen
+CGO_ENABLED=0 GOOS=darwin  GOARCH=arm64 go build -o /dev/null ./cmd/awesomegen
+```
+
+The schema check only matters when the configuration types change: the schema
+is generated, so the regenerated file belongs into the same commit. It
+compares the file with `HEAD` and not with the index, because `git diff --
+<path>` compares the working tree with the index: a schema that was
+regenerated and staged would pass the check although the committed file is
+stale. That is the defect of #85, which fixes the `make schema-check`
+target; the command here and the target have to be fixed together. Run the
+check after the regenerated schema is committed - a schema that was
+regenerated but not committed yet still fails it.
+
+Then check these five things:
 
 1. **The change is covered by a test that fails without it.** New behaviour
    needs a test, a bug fix needs a regression test. A test that passes
@@ -73,7 +113,15 @@ Then check these four things:
    rather than *what*.
 4. **The commit message is a Conventional Commit.** `fix(generate): probe
    every name for the case-insensitive file system`, with a body that
-   explains the change and ends with `Fixes #102`.
+   explains the change.
+5. **The pull request body states the grade of the work and closes the
+   issue.** It starts with `Fixes #102` and says the grade of the work. The
+   closing keyword has to be in the body: the repository is squash merged,
+   so the commit messages of the branch are discarded at the merge and the
+   body of the pull request becomes the body of the squash commit. GitHub
+   closes the issue when the keyword survives into that commit, so a
+   `Fixes #102` in a commit message alone closes nothing. The commit message
+   may repeat the keyword.
 
 ---
 
@@ -129,11 +177,23 @@ later" and without an issue is a finding that is lost.
 
 ### Listing the findings
 
-The findings of a pull request are read from the API of GitHub:
+The findings of a pull request are read from the API of GitHub. Set `PR` to
+the number of the pull request and use it in the path:
 
 ```bash
-gh api repos/davidcollom/awesomegen/pulls/<pr>/comments
+PR=127
+gh api "repos/davidcollom/awesomegen/pulls/$PR/comments"
+gh api "repos/davidcollom/awesomegen/issues/$PR/comments"
 ```
+
+Write the number as it is. `pulls/<pr>/comments` does not work in a shell:
+`<pr>` is an input redirection there, and the command reads
+`pulls//comments` instead.
+
+The first command returns the review comments - the findings of the
+reviewers, with the file and the line they are about. The second one
+returns the conversation comments: the `@codex review` requests and the
+review summary of the Codex reviewer.
 
 The badge of the Codex reviewer is in the body of the comment, so the grade
 of a finding can be read from it. A finding of Copilot carries no badge:
@@ -161,14 +221,15 @@ is not related to this change. The issue names the file and the line.
 
 A pull request is done when:
 
-* the whole suite is green,
+* every check of the suite above is green,
 * the change is covered by a test that fails without it,
 * every P0, P1 and P2 finding of the review is fixed in the pull request,
 * every P3 finding of the review is deferred with an issue that is linked
   from the pull request body,
 * every finding has an answer,
 * the body says what changed, why, and how it was tested,
-* the issue is closed by the pull request.
+* the body states the grade of the work,
+* the body closes the issue, when the pull request fixes one.
 
 ---
 
@@ -181,6 +242,8 @@ export PATH=$PATH:/home/opencode/sdk/go/bin   # go1.27.3
 ```
 
 `make` is not installed there either, so run the commands of the targets
-directly (the list at the top of this file). Everything else - the linter,
-the schema generator - is pinned and runs through `go run`, so no tool has
-to be installed.
+directly (the list in "Before you open the pull request"). Every tool that
+is not part of the Go distribution is pinned and runs through `go run`, so
+nothing has to be installed: the linter (`golangci-lint` v2.15.0), the
+scanner (`govulncheck` v1.9.0) and GoReleaser (v2.19.0). The schema is
+generated by the repository itself, with `go generate ./...`.

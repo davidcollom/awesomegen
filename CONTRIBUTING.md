@@ -149,14 +149,21 @@ carry the `good first issue` label are a good place to start.
 
 Before you open a pull request:
 
-1. `make fmt-check vet lint test` passes.
+1. `make fmt-check vet lint test` passes. The race detector (`make test-race`)
+   and the scan (`make vuln`) are green as well.
 2. `make schema` produces no diff (or the regenerated `config-schema.json`
    is part of the pull request).
 3. The change is covered by a test. New behaviour needs a test, bug fixes
    need a regression test.
 4. The pull request describes *what* changed and *why*; the commit messages
    describe the individual steps.
-5. Keep the pull request focused. Unrelated reformatting makes the review
+5. The body of the pull request closes the issue it fixes with
+   `Fixes #<issue>`. A pull request that fixes nothing - a change of the
+   documentation, for instance - needs no issue. The repository is squash
+   merged, so the keyword has to be in the body of the pull request: the
+   commit messages of the branch are discarded at the merge, and GitHub only
+   closes the issue when the keyword survives into the squash commit.
+6. Keep the pull request focused. Unrelated reformatting makes the review
    harder and slows it down.
 
 CI runs on every push to `main` and on every pull request: `gofmt`, `go vet`,
