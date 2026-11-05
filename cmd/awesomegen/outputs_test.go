@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -110,6 +111,59 @@ func TestCaseInsensitiveDirFollowsTheFileSystem(t *testing.T) {
 		"the probe has to agree with the file system")
 }
 
+// TestCaseInsensitiveDirProbesEveryName makes sure that the probe looks at
+// every name of the directory.
+//
+// The first name that carries letters does not have to be the one that gives
+// the answer away: a name that cannot be swapped - a dangling symbolic
+// link, for example - is not found on a file system that ignores the case
+// either. A probe that stops at that name reports a case-sensitive file
+// system, and two outputs that differ only in case are then allowed: the
+// second list silently overwrites the README of the first one.
+//
+// The file system is played by the injected lookup, so that the test says
+// the same thing on a runner whose file system tells the cases apart.
+func TestCaseInsensitiveDirProbesEveryName(t *testing.T) {
+	dir := t.TempDir()
+	// The symbolic link dangles, so its variant cannot be resolved, and
+	// its name sorts before the name of the file: it is the first name
+	// that carries letters.
+	require.NoError(t, os.Symlink("missing", filepath.Join(dir, "Zzz")))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "readme.md"), []byte("x"), 0o600))
+
+	require.True(t, caseInsensitiveDirWith(dir, existsIgnoringCase(t, dir)),
+		"the probe has to look at every name, not only at the first one")
+}
+
+// TestCaseInsensitiveDirSkipsNamesWithoutLetters makes sure that a name
+// that carries no letters is not looked up.
+//
+// Its variant is the name itself, so a lookup of it says nothing about the
+// file system.
+func TestCaseInsensitiveDirSkipsNamesWithoutLetters(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "123"), []byte("x"), 0o600))
+
+	var looked []string
+	caseInsensitiveDirWith(dir, func(path string) bool {
+		looked = append(looked, path)
+		return false
+	})
+
+	require.Empty(t, looked, "a name without letters must not be looked up")
+}
+
+// TestCaseInsensitiveDirReportsAnUnreadableDirectoryAsCaseSensitive makes
+// sure that a directory that cannot be read is reported as case-sensitive.
+//
+// It is the safe answer: two outputs that differ only in case are then
+// allowed, exactly as they are on a file system that tells them apart.
+func TestCaseInsensitiveDirReportsAnUnreadableDirectoryAsCaseSensitive(t *testing.T) {
+	missing := filepath.Join(t.TempDir(), "missing")
+
+	require.False(t, caseInsensitiveDir(missing))
+}
+
 // TestSwapCaseFlipsTheCaseOfTheLetters makes sure that the probe uses a
 // name that is different from the original one.
 func TestSwapCaseFlipsTheCaseOfTheLetters(t *testing.T) {
@@ -117,4 +171,30 @@ func TestSwapCaseFlipsTheCaseOfTheLetters(t *testing.T) {
 	require.Equal(t, "config.yaml", swapCase("CONFIG.YAML"))
 	// A name without letters cannot be told apart from its variant.
 	require.Equal(t, "123", swapCase("123"))
+}
+
+// existsIgnoringCase plays a file system that ignores the case.
+//
+// A name is found when the directory holds an entry that carries it,
+// whatever the case of its letters is. The entry has to be there, though: a
+// symbolic link that dangles is not found, because the file behind it is
+// missing.
+func existsIgnoringCase(t *testing.T, dir string) func(string) bool {
+	t.Helper()
+
+	entries, err := os.ReadDir(dir)
+	require.NoError(t, err)
+	names := map[string]bool{}
+	for _, e := range entries {
+		if _, err := os.Stat(filepath.Join(dir, e.Name())); err != nil {
+			// The link is followed, exactly as it is on a file system
+			// that ignores the case.
+			continue
+		}
+		names[strings.ToLower(e.Name())] = true
+	}
+
+	return func(path string) bool {
+		return names[strings.ToLower(filepath.Base(path))]
+	}
 }
