@@ -407,15 +407,89 @@ lists:
 // Only a document that carries nothing is accepted, so a second document
 // that holds a map, a sequence or a value is reported.
 func TestLoadRejectsASecondDocumentWithContent(t *testing.T) {
-	for _, body := range []string{
-		"version: 1\nuser: d\nlists:\n  - slug: s\n    title: T\n---\nfoo: bar\n",
-		"version: 1\nuser: d\nlists:\n  - slug: s\n    title: T\n---\n- a\n",
-		"version: 1\nuser: d\nlists:\n  - slug: s\n    title: T\n---\nhello\n",
-		"version: 1\nuser: d\nlists:\n  - slug: s\n    title: T\n---\n\"\"\n",
-	} {
-		_, err := config.Load(writeConfig(t, body))
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "exactly one YAML document")
+	tests := []struct {
+		name string
+		body string
+		want string
+	}{
+		{
+			name: "a mapping",
+			body: "version: 1\nuser: d\nlists:\n  - slug: s\n    title: T\n---\nfoo: bar\n",
+			want: "exactly one YAML document",
+		},
+		{
+			name: "a sequence",
+			body: "version: 1\nuser: d\nlists:\n  - slug: s\n    title: T\n---\n- a\n",
+			want: "exactly one YAML document",
+		},
+		{
+			name: "a value",
+			body: "version: 1\nuser: d\nlists:\n  - slug: s\n    title: T\n---\nhello\n",
+			want: "exactly one YAML document",
+		},
+		{
+			name: "an empty string",
+			body: "version: 1\nuser: d\nlists:\n  - slug: s\n    title: T\n---\n\"\"\n",
+			want: "exactly one YAML document",
+		},
+		{
+			name: "an empty mapping",
+			body: "version: 1\nuser: d\nlists:\n  - slug: s\n    title: T\n---\n{}\n",
+			want: "exactly one YAML document",
+		},
+		{
+			name: "an empty sequence",
+			body: "version: 1\nuser: d\nlists:\n  - slug: s\n    title: T\n---\n[]\n",
+			want: "exactly one YAML document",
+		},
+		{
+			name: "a boolean",
+			body: "version: 1\nuser: d\nlists:\n  - slug: s\n    title: T\n---\nfalse\n",
+			want: "exactly one YAML document",
+		},
+		{
+			name: "a number",
+			body: "version: 1\nuser: d\nlists:\n  - slug: s\n    title: T\n---\n0\n",
+			want: "exactly one YAML document",
+		},
+		{
+			name: "a quoted null",
+			body: "version: 1\nuser: d\nlists:\n  - slug: s\n    title: T\n---\n\"null\"\n",
+			want: "exactly one YAML document",
+		},
+		{
+			name: "a single quoted null",
+			body: "version: 1\nuser: d\nlists:\n  - slug: s\n    title: T\n---\n'null'\n",
+			want: "exactly one YAML document",
+		},
+		{
+			// The tag of the null can be put on any value, and the
+			// parser refuses to resolve a value that is not a null:
+			// it reports "cannot decode !!str `foo` as a !!null". A
+			// trailing document is held to the same rule, so the tag
+			// alone does not make the document empty.
+			name: "the null tag with a value",
+			body: "version: 1\nuser: d\nlists:\n  - slug: s\n    title: T\n--- !!null foo\n",
+			want: "exactly one YAML document",
+		},
+		{
+			name: "content after an empty trailing document",
+			body: "version: 1\nuser: d\nlists:\n  - slug: s\n    title: T\n---\n---\nfoo: bar\n",
+			want: "exactly one YAML document",
+		},
+		{
+			name: "content after a null trailing document",
+			body: "version: 1\nuser: d\nlists:\n  - slug: s\n    title: T\n---\nnull\nfoo: bar\n",
+			want: "mapping values are not allowed in this context",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := config.Load(writeConfig(t, tt.body))
+			require.Error(t, err)
+			require.Contains(t, err.Error(), tt.want)
+		})
 	}
 }
 
@@ -426,16 +500,47 @@ func TestLoadRejectsASecondDocumentWithContent(t *testing.T) {
 // nothing. The file still holds exactly one document with content in it, so
 // refusing it blocked a perfectly ordinary configuration.
 func TestLoadAcceptsATrailingDocumentSeparator(t *testing.T) {
-	for _, body := range []string{
-		"version: 1\nuser: d\nlists:\n  - slug: s\n    title: T\n---\n",
-		"version: 1\nuser: d\nlists:\n  - slug: s\n    title: T\n---",
-		"version: 1\nuser: d\nlists:\n  - slug: s\n    title: T\n---\n# a comment\n",
-		"version: 1\nuser: d\nlists:\n  - slug: s\n    title: T\n---\n   \n",
-	} {
-		cfg, err := config.Load(writeConfig(t, body))
-		require.NoError(t, err)
-		require.Len(t, cfg.Lists, 1)
-		require.Equal(t, "s", cfg.Lists[0].Slug)
+	tests := []struct {
+		name string
+		body string
+	}{
+		{
+			name: "the separator on its own",
+			body: "version: 1\nuser: d\nlists:\n  - slug: s\n    title: T\n---",
+		},
+		{
+			name: "the separator and a newline",
+			body: "version: 1\nuser: d\nlists:\n  - slug: s\n    title: T\n---\n",
+		},
+		{
+			name: "the separator and spaces",
+			body: "version: 1\nuser: d\nlists:\n  - slug: s\n    title: T\n---   ",
+		},
+		{
+			name: "the separator and a comment",
+			body: "version: 1\nuser: d\nlists:\n  - slug: s\n    title: T\n---\n# a comment\n",
+		},
+		{
+			name: "the separator and a blank line",
+			body: "version: 1\nuser: d\nlists:\n  - slug: s\n    title: T\n---\n   \n",
+		},
+		{
+			name: "two separators",
+			body: "version: 1\nuser: d\nlists:\n  - slug: s\n    title: T\n---\n---\n",
+		},
+		{
+			name: "three separators",
+			body: "version: 1\nuser: d\nlists:\n  - slug: s\n    title: T\n---\n---\n---\n",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg, err := config.Load(writeConfig(t, tt.body))
+			require.NoError(t, err)
+			require.Len(t, cfg.Lists, 1)
+			require.Equal(t, "s", cfg.Lists[0].Slug)
+		})
 	}
 }
 
@@ -445,14 +550,43 @@ func TestLoadAcceptsATrailingDocumentSeparator(t *testing.T) {
 // The null value carries no configuration, so a document that holds it
 // holds nothing, whichever way the null is spelled.
 func TestLoadAcceptsATrailingNullDocument(t *testing.T) {
-	for _, body := range []string{
-		"version: 1\nuser: d\nlists:\n  - slug: s\n    title: T\n---\nnull\n",
-		"version: 1\nuser: d\nlists:\n  - slug: s\n    title: T\n---\n~\n",
-		"version: 1\nuser: d\nlists:\n  - slug: s\n    title: T\n---\n!!null\n",
-	} {
-		cfg, err := config.Load(writeConfig(t, body))
-		require.NoError(t, err)
-		require.Len(t, cfg.Lists, 1)
+	tests := []struct {
+		name string
+		body string
+	}{
+		{
+			name: "null",
+			body: "version: 1\nuser: d\nlists:\n  - slug: s\n    title: T\n---\nnull\n",
+		},
+		{
+			name: "a tilde",
+			body: "version: 1\nuser: d\nlists:\n  - slug: s\n    title: T\n---\n~\n",
+		},
+		{
+			name: "Null",
+			body: "version: 1\nuser: d\nlists:\n  - slug: s\n    title: T\n---\nNull\n",
+		},
+		{
+			name: "NULL",
+			body: "version: 1\nuser: d\nlists:\n  - slug: s\n    title: T\n---\nNULL\n",
+		},
+		{
+			name: "the null tag",
+			body: "version: 1\nuser: d\nlists:\n  - slug: s\n    title: T\n---\n!!null\n",
+		},
+		{
+			name: "the null tag with an empty string",
+			body: "version: 1\nuser: d\nlists:\n  - slug: s\n    title: T\n---\n!!null \"\"\n",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg, err := config.Load(writeConfig(t, tt.body))
+			require.NoError(t, err)
+			require.Len(t, cfg.Lists, 1)
+			require.Equal(t, "s", cfg.Lists[0].Slug)
+		})
 	}
 }
 

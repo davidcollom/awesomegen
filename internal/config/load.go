@@ -106,12 +106,28 @@ func Load(path string) (Config, error) {
 // configuration, so all of them are accepted. A document that holds a
 // map, a sequence or a value carries content, and a second document that
 // carries content is reported.
+//
+// The value of the scalar is checked as well, because a tag can be put on
+// any value: "!!null foo" carries the tag of the null, but its value is
+// not a null, and the parser refuses to resolve it - it reports "cannot
+// decode !!str `foo` as a !!null". A trailing document is therefore only
+// accepted when it holds one of the spellings of the null and nothing
+// else, so that a trailing document is held to the same rule as a leading
+// one.
 func isEmptyDocument(doc *yaml.Node) bool {
 	if doc.Kind != yaml.DocumentNode || len(doc.Content) != 1 {
 		return false
 	}
 	root := doc.Content[0]
-	return root.Kind == yaml.ScalarNode && root.ShortTag() == "!!null"
+	if root.Kind != yaml.ScalarNode || root.ShortTag() != "!!null" {
+		return false
+	}
+	switch root.Value {
+	case "", "~", "null", "Null", "NULL":
+		return true
+	default:
+		return false
+	}
 }
 
 func (c *Config) validate() error {
