@@ -285,6 +285,137 @@ func TestGenerateRejectsAnInvalidConfig(t *testing.T) {
 	require.Error(t, err)
 }
 
+// TestCommandsRejectTheFlagsTheyDoNotUse makes sure that a flag a command
+// does not use is refused instead of being ignored.
+//
+// The flags are persistent flags of the root command, so every subcommand
+// accepts them. A flag that is accepted and ignored lies to the user:
+// "validate --dry-run" looks like a rehearsal, and it is not.
+//
+// The table covers the shapes a flag can be written in, so that a check that
+// only catches one of them does not pass the suite.
+func TestCommandsRejectTheFlagsTheyDoNotUse(t *testing.T) {
+	path := writeConfig(t, validConfig)
+
+	for _, tc := range []struct {
+		name string
+		args []string
+		want string
+	}{
+		{"validate refuses the dry run", []string{"validate", "--config", path, "--dry-run"}, "--dry-run is not used by the validate command"},
+		{"validate refuses the dry run with a value", []string{"validate", "--dry-run=true"}, "--dry-run is not used by the validate command"},
+		{"validate refuses the dry run that is switched off", []string{"validate", "--dry-run=false"}, "--dry-run is not used by the validate command"},
+		{"schema refuses the config file", []string{"schema", "--config", path}, "--config is not used by the schema command"},
+		{"schema refuses the config file with a value", []string{"schema", "--config=" + path}, "--config is not used by the schema command"},
+		{"schema refuses the short config file", []string{"schema", "-c", path}, "--config is not used by the schema command"},
+		{"schema refuses the dry run", []string{"schema", "--dry-run"}, "--dry-run is not used by the schema command"},
+		{"version refuses the config file", []string{"version", "--config", path}, "--config is not used by the version command"},
+		{"version refuses the dry run", []string{"version", "--dry-run"}, "--dry-run is not used by the version command"},
+		{"the help command refuses the dry run", []string{"help", "--dry-run"}, "--dry-run is not used by the help command"},
+		{"the completion command refuses the dry run", []string{"completion", "--dry-run"}, "--dry-run is not used by the completion command"},
+		{"the completion of a shell refuses the config file", []string{"completion", "bash", "--config", path}, "--config is not used by the bash command"},
+		// The flags are shared, so a flag that is written before the
+		// name of the subcommand belongs to the subcommand as well.
+		{"a flag before the subcommand belongs to the subcommand", []string{"--dry-run", "validate"}, "--dry-run is not used by the validate command"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := run(t, tc.args...)
+			require.Error(t, err)
+			// The message names the flag and the command, so that the
+			// user knows what to change.
+			require.Contains(t, err.Error(), tc.want)
+		})
+	}
+}
+
+// TestCommandsAcceptTheFlagsTheyUse makes sure that the flags a command does
+// use keep working.
+//
+// The check of the unused flags must not refuse the flags that the command
+// honours.
+func TestCommandsAcceptTheFlagsTheyUse(t *testing.T) {
+	path := writeConfig(t, validConfig)
+
+	out, err := run(t, "validate", "--config", path)
+	require.NoError(t, err)
+	require.Contains(t, out, "is valid")
+
+	out, err = run(t, "schema")
+	require.NoError(t, err)
+	require.NotEmpty(t, out)
+
+	out, err = run(t, "version")
+	require.NoError(t, err)
+	require.Contains(t, out, "awesomegen ")
+
+	// The verbose flag is read by the pre-run hook of the root command,
+	// so every command honours it.
+	_, err = run(t, "schema", "--verbose")
+	require.NoError(t, err)
+
+	// The root command and the generate command are the two that use the
+	// config file and the dry run, so they have to accept them.
+	//
+	// The run itself contacts GitHub, and the tests do not touch the
+	// network, so the configuration is one that the loader refuses: the
+	// run stops before the first request, and the error is the one of the
+	// configuration rather than the refusal of a flag.
+	badPath := writeConfig(t, "lists: []\n")
+	for _, tc := range []struct {
+		name string
+		args []string
+	}{
+		{"the root command accepts the config file and the dry run", []string{"--dry-run", "--config", badPath}},
+		{"the generate command accepts the config file and the dry run", []string{"generate", "--dry-run", "--config", badPath}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := run(t, tc.args...)
+			require.Error(t, err)
+			// The run reached the configuration file, so the flags were
+			// accepted and the config file was read.
+			require.Contains(t, err.Error(), "lists is required")
+			require.NotContains(t, err.Error(), "is not used by")
+		})
+	}
+}
+
+// TestCompletionWritesTheScriptToTheOutput makes sure that the completion
+// script goes to the output writer of the command.
+//
+// Cobra captures the writer when the completion command is built, so the
+// script used to end up in the standard output stream even when the caller
+// had set another writer.
+func TestCompletionWritesTheScriptToTheOutput(t *testing.T) {
+	for _, tc := range []struct {
+		shell string
+		want  string
+	}{
+		{"bash", "# bash completion V2 for awesomegen"},
+		{"zsh", "#compdef awesomegen"},
+		{"fish", "# fish completion for awesomegen"},
+		{"powershell", "# powershell completion for awesomegen"},
+	} {
+		t.Run(tc.shell, func(t *testing.T) {
+			out, err := run(t, "completion", tc.shell)
+			require.NoError(t, err)
+			require.Contains(t, out, tc.want)
+		})
+	}
+}
+
+// TestCompletionRefusesAnArgument makes sure that the completion command
+// refuses an argument.
+//
+// The command is runnable now, so cobra checks the arguments and reports the
+// unknown one instead of printing the help.
+func TestCompletionRefusesAnArgument(t *testing.T) {
+	out, err := run(t, "completion", "nonsense")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), `unknown command "nonsense" for "awesomegen completion"`)
+	// The help is not printed, the argument is refused.
+	require.NotContains(t, out, "Generate the autocompletion script")
+}
+
 func TestUnknownSubcommandFails(t *testing.T) {
 	_, err := run(t, "nope")
 	require.Error(t, err)

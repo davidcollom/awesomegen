@@ -275,7 +275,8 @@ awesomegen schema           print the JSON schema of the configuration file
 awesomegen version          print the version of awesomegen
 ```
 
-Cobra also provides `awesomegen help`, `awesomegen completion`, `--help` and `--version`.
+Cobra also provides `awesomegen help`, `awesomegen completion` (for the `bash`,
+`zsh`, `fish` and `powershell` shells), `--help` and `--version`.
 
 ### Global flags
 
@@ -284,6 +285,40 @@ Cobra also provides `awesomegen help`, `awesomegen completion`, `--help` and `--
 | `-c`, `--config` | `config.yaml` | Path of the configuration file. |
 | `--verbose` | `false` | Log what is happening in more detail. The messages go to the standard error stream. |
 | `--dry-run` | `false` | Print the rendered README(s) to the standard output instead of writing them. The comment above the document names the file it would have been written to. |
+
+The flags are persistent flags of the root command, so every command accepts
+them. A command that does not use a flag refuses it instead of ignoring it:
+`awesomegen validate --dry-run` fails with `--dry-run is not used by the
+validate command`. A flag that is ignored is a flag that lies, and a user who
+wrote `--dry-run` expects the run to be different.
+
+| Command | `--config` | `--verbose` | `--dry-run` |
+| --- | --- | --- | --- |
+| `awesomegen` | yes | yes | yes |
+| `awesomegen generate` | yes | yes | yes |
+| `awesomegen validate` | yes | yes | no |
+| `awesomegen schema` | no | yes | no |
+| `awesomegen version` | no | yes | no |
+| `awesomegen help` | no | yes | no |
+| `awesomegen completion` | no | yes | no |
+| `awesomegen completion bash` | no | yes | no |
+| `awesomegen completion zsh` | no | yes | no |
+| `awesomegen completion fish` | no | yes | no |
+| `awesomegen completion powershell` | no | yes | no |
+
+The completion commands refuse the shared flags as well: they write a script
+and they read no configuration file, so `awesomegen completion bash --config
+config.yaml` fails with `--config is not used by the bash command`.
+
+The completion command is runnable, so it checks its arguments:
+`awesomegen completion bash` writes the script of the bash shell, while
+`awesomegen completion nonsense` fails with `unknown command "nonsense" for
+"awesomegen completion"` instead of printing the help.
+
+The flags are shared, so a flag that is written before the name of the
+subcommand belongs to the subcommand as well: `awesomegen --dry-run validate`
+is the same request as `awesomegen validate --dry-run`, and it is refused for
+the same reason.
 
 ### `awesomegen generate`
 

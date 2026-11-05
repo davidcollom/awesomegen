@@ -18,7 +18,7 @@ import (
 // and no request is sent to GitHub, so the command can be used in a
 // pre-commit hook or in a pull request check.
 func newValidateCommand(opts *options) *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "validate",
 		Short: "Check the configuration file without contacting GitHub",
 		Long: `Check the configuration file without contacting GitHub.
@@ -33,6 +33,10 @@ directory of the configuration file.`,
 			return runValidate(cmd, opts)
 		},
 	}
+	// The command reads the configuration file, but it never writes one, so
+	// a dry run would change nothing.
+	usesSharedFlags(cmd, flagConfig)
+	return cmd
 }
 
 // runValidate checks the configuration and prints a summary of it.
