@@ -17,7 +17,7 @@ import (
 // without them - "go run", for example - and are left out of the output
 // then.
 func newVersionCommand() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "version",
 		Short: "Print the version of awesomegen",
 		Args:  cobra.NoArgs,
@@ -39,4 +39,8 @@ func newVersionCommand() *cobra.Command {
 			return err
 		},
 	}
+	// The command prints the build information of the binary: it reads no
+	// configuration file and writes nothing, so both flags would only
+	// pretend to do something.
+	return cmd
 }
