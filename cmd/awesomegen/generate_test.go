@@ -387,3 +387,239 @@ func TestGenerateWritesTheDocumentKeepsTheFileMode(t *testing.T) {
 	require.Equal(t, os.FileMode(0o600), fi.Mode().Perm(),
 		"the mode of the file that was replaced is kept")
 }
+
+// TestGenerateWritesANewFileWithTheModeOfTheUmask makes sure that the mode
+// of a file that did not exist yet is the one the umask of the user produces.
+//
+// The umask only applies while a file is created: a mode that is set
+// afterwards ignores it. A checkout with a restrictive umask - 077, for
+// example - ends up with a README that every user of the machine may read,
+// when the mode of the temporary file is widened to 0644 explicitly.
+//
+// The umask belongs to the whole process, so the test does not run in
+// parallel with the other tests, and the previous umask is restored when the
+// test is done.
+func TestGenerateWritesANewFileWithTheModeOfTheUmask(t *testing.T) {
+	setUmask(t, 0o077)
+
+	dir := t.TempDir()
+	cfgPath := writeConfigIn(t, dir, oneListConfig)
+
+	opts := &options{configPath: cfgPath}
+	_, err := runGenerateWithArgs(t, opts, testGenerator(t))
+	require.NoError(t, err)
+
+	fi, err := os.Stat(filepath.Join(dir, "README.md"))
+	require.NoError(t, err)
+	// The umask 077 leaves the file to its owner alone: neither the group
+	// nor the others may read it.
+	require.Equal(t, os.FileMode(0o600), fi.Mode().Perm(),
+		"the umask of the user decides the mode of a new file")
+}
+
+// TestGenerateKeepsTheModeOfAReplacedFileUnderARestrictiveUmask makes sure
+// that the file that is replaced keeps its own mode, whatever the umask of
+// the user is.
+//
+// The mode of a file that already exists is the choice of the user who
+// curated it, and a restrictive umask must not widen it.
+func TestGenerateKeepsTheModeOfAReplacedFileUnderARestrictiveUmask(t *testing.T) {
+	setUmask(t, 0o077)
+
+	dir := t.TempDir()
+	cfgPath := writeConfigIn(t, dir, oneListConfig)
+
+	existing := filepath.Join(dir, "README.md")
+	require.NoError(t, os.WriteFile(existing, []byte("curated\n"), 0o644))
+	// The umask applies to the file that the test creates as well, so the
+	// mode of the file is set explicitly.
+	require.NoError(t, os.Chmod(existing, 0o644))
+
+	opts := &options{configPath: cfgPath}
+	_, err := runGenerateWithArgs(t, opts, testGenerator(t))
+	require.NoError(t, err)
+
+	fi, err := os.Stat(existing)
+	require.NoError(t, err)
+	require.Equal(t, os.FileMode(0o644), fi.Mode().Perm(),
+		"the mode of the file that was replaced is kept")
+}
+
+// TestTempFileModeKeepsAReplacedFilePrivate makes sure that the temporary
+// file of a file that is replaced stays private while it is written.
+//
+// The mode of the temporary file is only widened after the content was
+// written, so a temporary file that is created with the mode of the umask
+// exposes the content of a README that only its owner may read - and lets
+// another user of the machine change it before it is renamed into place.
+func TestTempFileModeKeepsAReplacedFilePrivate(t *testing.T) {
+	require.Equal(t, os.FileMode(0o600), tempFileMode(true),
+		"the temporary file of a file that is replaced is private")
+	require.Equal(t, os.FileMode(0o666), tempFileMode(false),
+		"the umask decides the mode of the temporary file of a new file")
+}
+
+// TestCreateTempFileCreatesTheFileWithTheGivenMode makes sure that the
+// temporary file is created with the mode the caller asks for.
+//
+// The mode of the temporary file of a file that is replaced is 0600, so that
+// the content of a README that only its owner may read is not readable - or
+// changeable - by anybody else while it is written. The mode of the
+// temporary file of a file that does not exist yet is 0666, so that the
+// umask of the user decides the mode of the new file.
+//
+// The umask belongs to the whole process, so the test does not run in
+// parallel with the other tests, and the previous umask is restored when
+// the test is done.
+func TestCreateTempFileCreatesTheFileWithTheGivenMode(t *testing.T) {
+	setUmask(t, 0o022)
+
+	dir := t.TempDir()
+
+	private, err := createTempFile(dir, 0o600)
+	require.NoError(t, err)
+	require.NoError(t, private.Close())
+
+	fi, err := os.Stat(private.Name())
+	require.NoError(t, err)
+	require.Equal(t, os.FileMode(0o600), fi.Mode().Perm(),
+		"the temporary file of a file that is replaced is private")
+
+	public, err := createTempFile(dir, 0o666)
+	require.NoError(t, err)
+	require.NoError(t, public.Close())
+
+	fi, err = os.Stat(public.Name())
+	require.NoError(t, err)
+	require.Equal(t, os.FileMode(0o666&^0o022), fi.Mode().Perm(),
+		"the umask of the user decides the mode of the temporary file of a new file")
+}
+
+// TestCreateTempFileUsesTheNameOfTheRun makes sure that the name of the
+// temporary file tells that it belongs to a run of the generator.
+//
+// The name carries random characters, so that two runs of the generator do
+// not pick the same one.
+func TestCreateTempFileUsesTheNameOfTheRun(t *testing.T) {
+	dir := t.TempDir()
+
+	f, err := createTempFile(dir, 0o600)
+	require.NoError(t, err)
+	require.NoError(t, f.Close())
+
+	require.Regexp(t, `^\.awesomegen-[0-9a-f]{16}\.tmp$`, filepath.Base(f.Name()),
+		"the name of the temporary file tells that it belongs to a run")
+}
+
+// TestCreateTempFileRetriesWhenTheNameIsTaken makes sure that a name that is
+// taken is not the end of the road.
+//
+// A leftover of another run occupies the name, and the run that collides
+// with it has to pick another name instead of failing.
+func TestCreateTempFileRetriesWhenTheNameIsTaken(t *testing.T) {
+	dir := t.TempDir()
+
+	// The first name is taken by a leftover of another run, the second one
+	// is free.
+	used := tempFileNamesFor(t, "taken", "free")
+
+	leftover := filepath.Join(dir, ".awesomegen-taken.tmp")
+	require.NoError(t, os.WriteFile(leftover, []byte("leftover\n"), 0o600))
+
+	f, err := createTempFile(dir, 0o600)
+	require.NoError(t, err)
+	require.NoError(t, f.Close())
+
+	// The file was created with the second name.
+	require.Equal(t, filepath.Join(dir, ".awesomegen-free.tmp"), f.Name())
+	require.FileExists(t, f.Name())
+	require.Equal(t, 2, used(), "the name that was taken is retried")
+
+	// The leftover was left alone.
+	data, err := os.ReadFile(leftover)
+	require.NoError(t, err)
+	require.Equal(t, "leftover\n", string(data))
+}
+
+// TestCreateTempFileCreatesTheFileExclusively makes sure that two runs
+// cannot end up with the same file.
+//
+// The file is created exclusively, so a run that picks the name of another
+// run does not take its file - it would write its content into the file of
+// the other run.
+func TestCreateTempFileCreatesTheFileExclusively(t *testing.T) {
+	dir := t.TempDir()
+
+	// Every name is the same one.
+	used := tempFileNamesFor(t, "same")
+
+	f, err := createTempFile(dir, 0o600)
+	require.NoError(t, err)
+	_, err = f.WriteString("the content of the first run\n")
+	require.NoError(t, err)
+	require.NoError(t, f.Close())
+
+	// The second run picks the name of the first one and has to give up.
+	_, err = createTempFile(dir, 0o600)
+	require.Error(t, err)
+	require.ErrorContains(t, err, "no free name for a temporary file")
+	require.Equal(t, tempFileNames+1, used(),
+		"the helper tries every name before it gives up")
+
+	// The create is exclusive: the name is taken.
+	_, err = os.OpenFile(f.Name(), os.O_CREATE|os.O_EXCL|os.O_RDWR, 0o600)
+	require.Error(t, err)
+	require.True(t, os.IsExist(err), "the file is created exclusively")
+
+	// The file of the first run still has its content.
+	data, err := os.ReadFile(f.Name())
+	require.NoError(t, err)
+	require.Equal(t, "the content of the first run\n", string(data))
+}
+
+// TestCreateTempFileGivesUpWhenEveryNameIsTaken makes sure that the helper
+// does not try forever.
+//
+// The names are random, so a name that is taken is rare - but a directory
+// that is full of leftovers must not hang the generator.
+func TestCreateTempFileGivesUpWhenEveryNameIsTaken(t *testing.T) {
+	dir := t.TempDir()
+
+	// Every name is the same one, and it is taken.
+	used := tempFileNamesFor(t, "same")
+
+	leftover := filepath.Join(dir, ".awesomegen-same.tmp")
+	require.NoError(t, os.WriteFile(leftover, []byte("leftover\n"), 0o600))
+
+	_, err := createTempFile(dir, 0o600)
+	require.Error(t, err)
+	require.ErrorContains(t, err, "no free name for a temporary file")
+	require.ErrorContains(t, err, dir)
+	require.Equal(t, tempFileNames, used(),
+		"the helper gives up after tempFileNames names")
+}
+
+// tempFileNamesFor makes the generator of the name of a temporary file
+// return the names of the given list, one after the other.
+//
+// The last name is repeated when the list is exhausted, so that a test can
+// hand a name that is taken over and over again. The generator is restored
+// when the test is done, and the returned function tells how many names were
+// asked for.
+func tempFileNamesFor(t *testing.T, names ...string) func() int {
+	t.Helper()
+	require.NotEmpty(t, names, "the test has to hand at least one name")
+
+	previous := tempFileName
+	t.Cleanup(func() {
+		tempFileName = previous
+	})
+
+	used := 0
+	tempFileName = func() (string, error) {
+		name := names[min(used, len(names)-1)]
+		used++
+		return name, nil
+	}
+	return func() int { return used }
+}
