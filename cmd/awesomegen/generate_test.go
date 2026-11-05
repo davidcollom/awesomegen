@@ -128,7 +128,10 @@ func TestGenerateEmptyListNamesTheList(t *testing.T) {
 			gen := testGenerator(t)
 			gen.Scraper = fakeScraper{}
 			out, err := runGenerateWithArgs(t, &options{configPath: cfgPath}, gen)
-			require.EqualError(t, err, "list \""+tc.want+"\" produced no entries; refusing to overwrite "+existing+" with an empty README")
+			// The message names the list and says that nothing was written:
+			// every list is rendered before the first one is written, so a
+			// list that cannot be rendered leaves every README untouched.
+			require.EqualError(t, err, "list \""+tc.want+"\" produced no entries; refusing to overwrite "+existing+" with an empty README; no README was written")
 			require.Empty(t, out)
 
 			data, err := os.ReadFile(existing)
