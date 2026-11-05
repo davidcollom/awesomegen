@@ -352,6 +352,68 @@ func TestCommandsAcceptTheFlagsTheyUse(t *testing.T) {
 	// so every command honours it.
 	_, err = run(t, "schema", "--verbose")
 	require.NoError(t, err)
+
+	// The root command and the generate command are the two that use the
+	// config file and the dry run, so they have to accept them.
+	//
+	// The run itself contacts GitHub, and the tests do not touch the
+	// network, so the configuration is one that the loader refuses: the
+	// run stops before the first request, and the error is the one of the
+	// configuration rather than the refusal of a flag.
+	badPath := writeConfig(t, "lists: []\n")
+	for _, tc := range []struct {
+		name string
+		args []string
+	}{
+		{"the root command accepts the config file and the dry run", []string{"--dry-run", "--config", badPath}},
+		{"the generate command accepts the config file and the dry run", []string{"generate", "--dry-run", "--config", badPath}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := run(t, tc.args...)
+			require.Error(t, err)
+			// The run reached the configuration file, so the flags were
+			// accepted and the config file was read.
+			require.Contains(t, err.Error(), "lists is required")
+			require.NotContains(t, err.Error(), "is not used by")
+		})
+	}
+}
+
+// TestCompletionWritesTheScriptToTheOutput makes sure that the completion
+// script goes to the output writer of the command.
+//
+// Cobra captures the writer when the completion command is built, so the
+// script used to end up in the standard output stream even when the caller
+// had set another writer.
+func TestCompletionWritesTheScriptToTheOutput(t *testing.T) {
+	for _, tc := range []struct {
+		shell string
+		want  string
+	}{
+		{"bash", "# bash completion V2 for awesomegen"},
+		{"zsh", "#compdef awesomegen"},
+		{"fish", "# fish completion for awesomegen"},
+		{"powershell", "# powershell completion for awesomegen"},
+	} {
+		t.Run(tc.shell, func(t *testing.T) {
+			out, err := run(t, "completion", tc.shell)
+			require.NoError(t, err)
+			require.Contains(t, out, tc.want)
+		})
+	}
+}
+
+// TestCompletionRefusesAnArgument makes sure that the completion command
+// refuses an argument.
+//
+// The command is runnable now, so cobra checks the arguments and reports the
+// unknown one instead of printing the help.
+func TestCompletionRefusesAnArgument(t *testing.T) {
+	out, err := run(t, "completion", "nonsense")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), `unknown command "nonsense" for "awesomegen completion"`)
+	// The help is not printed, the argument is refused.
+	require.NotContains(t, out, "Generate the autocompletion script")
 }
 
 func TestUnknownSubcommandFails(t *testing.T) {

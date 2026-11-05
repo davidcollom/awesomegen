@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
@@ -27,6 +28,26 @@ var date = ""
 
 // loggerKey is the key the logger is stored under in the command context.
 type loggerKey struct{}
+
+// The names of the command and of the flag that cobra uses for the
+// completion scripts.
+const (
+	// completionCommandName is the name of the command that writes the
+	// completion script of a shell.
+	completionCommandName = "completion"
+	// completionNoDescFlag is the flag that switches the descriptions of
+	// the completion script off.
+	completionNoDescFlag = "no-descriptions"
+)
+
+func init() {
+	// Cobra runs only the closest persistent pre-run hook of a command, so
+	// a subcommand that has a hook of its own would shadow the one of the
+	// root command - and the check of the flags would stop running for it.
+	// The traversal makes every hook of the chain run, so the check of the
+	// root command keeps its hold on the whole tree.
+	cobra.EnableTraverseRunHooks = true
+}
 
 func main() {
 	// Cancel the run on SIGINT/SIGTERM so a scheduled job can be stopped
@@ -85,7 +106,9 @@ configuration file.`,
 		// The pre-run hook of the root command runs for every command of
 		// the tree, so this is the place where a flag that a command does
 		// not use is refused - also for the commands that cobra adds
-		// itself.
+		// itself. The traversal of the hooks is switched on in the init
+		// function of this file, so that a subcommand with a hook of its
+		// own does not shadow this one.
 		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
 			if opts.verbose {
 				// The detailed messages are logged at level 1, so they
@@ -118,16 +141,75 @@ configuration file.`,
 	// command for it. The hook is what refuses the flags that a command
 	// does not use, so the command is given a run function that prints the
 	// help, exactly as before.
+	//
+	// The shell commands of the completion command write the script to the
+	// writer they find when they are built, so they are re-pointed at the
+	// writer of the command that runs them.
 	root.InitDefaultCompletionCmd()
-	for _, cmd := range root.Commands() {
-		if cmd.Name() == "completion" {
-			cmd.RunE = func(c *cobra.Command, _ []string) error {
-				return c.Help()
-			}
-		}
-	}
+	configureCompletionCommand(root)
 
 	return root
+}
+
+// configureCompletionCommand makes the completion command of cobra behave
+// like the other commands of the tree.
+//
+// The command is runnable, so that the pre-run hook of the root command runs
+// for it and the flags that it does not use are refused. Running it prints
+// its help, exactly as it did before.
+//
+// Cobra writes the completion script to the writer that it finds when the
+// command is built, so the script would end up in the standard output stream
+// even when the caller has set another writer. The run functions of the
+// shell commands are therefore replaced with ones that use the writer of the
+// command that runs them.
+func configureCompletionCommand(root *cobra.Command) {
+	for _, cmd := range root.Commands() {
+		if cmd.Name() != completionCommandName {
+			continue
+		}
+		cmd.RunE = func(c *cobra.Command, _ []string) error {
+			return c.Help()
+		}
+		for _, shell := range cmd.Commands() {
+			shell.RunE = completionRunner(shell.Name())
+		}
+	}
+}
+
+// completionRunner returns the run function of the shell command that writes
+// the completion script of that shell.
+//
+// The writer is looked up when the command runs and not when it is built, so
+// that the script goes to the writer of the caller.
+func completionRunner(shell string) func(*cobra.Command, []string) error {
+	return func(c *cobra.Command, _ []string) error {
+		out := c.OutOrStdout()
+		// The flag is missing when the descriptions are switched off for
+		// good, and then the script carries them.
+		noDesc, err := c.Flags().GetBool(completionNoDescFlag)
+		if err != nil {
+			noDesc = false
+		}
+		switch shell {
+		case "bash":
+			return c.Root().GenBashCompletionV2(out, !noDesc)
+		case "zsh":
+			if noDesc {
+				return c.Root().GenZshCompletionNoDesc(out)
+			}
+			return c.Root().GenZshCompletion(out)
+		case "fish":
+			return c.Root().GenFishCompletion(out, !noDesc)
+		case "powershell":
+			if noDesc {
+				return c.Root().GenPowerShellCompletion(out)
+			}
+			return c.Root().GenPowerShellCompletionWithDesc(out)
+		default:
+			return fmt.Errorf("unknown shell %q", shell)
+		}
+	}
 }
 
 // newLogger returns the logger of the CLI. The messages go to the standard

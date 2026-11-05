@@ -275,7 +275,8 @@ awesomegen schema           print the JSON schema of the configuration file
 awesomegen version          print the version of awesomegen
 ```
 
-Cobra also provides `awesomegen help`, `awesomegen completion`, `--help` and `--version`.
+Cobra also provides `awesomegen help`, `awesomegen completion` (for the `bash`,
+`zsh`, `fish` and `powershell` shells), `--help` and `--version`.
 
 ### Global flags
 
@@ -300,6 +301,19 @@ wrote `--dry-run` expects the run to be different.
 | `awesomegen version` | no | yes | no |
 | `awesomegen help` | no | yes | no |
 | `awesomegen completion` | no | yes | no |
+| `awesomegen completion bash` | no | yes | no |
+| `awesomegen completion zsh` | no | yes | no |
+| `awesomegen completion fish` | no | yes | no |
+| `awesomegen completion powershell` | no | yes | no |
+
+The completion commands refuse the shared flags as well: they write a script
+and they read no configuration file, so `awesomegen completion bash --config
+config.yaml` fails with `--config is not used by the bash command`.
+
+The completion command is runnable, so it checks its arguments:
+`awesomegen completion bash` writes the script of the bash shell, while
+`awesomegen completion nonsense` fails with `unknown command "nonsense" for
+"awesomegen completion"` instead of printing the help.
 
 The flags are shared, so a flag that is written before the name of the
 subcommand belongs to the subcommand as well: `awesomegen --dry-run validate`
