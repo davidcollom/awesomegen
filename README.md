@@ -339,6 +339,9 @@ is not written at all. A list that produces no entries is an error, and so
 is a list whose repositories are all gone: the tool refuses to overwrite a
 curated README with an empty or an incomplete one.
 
+Every list is rendered before the first one is written, so a run that fails
+leaves every README untouched.
+
 ### `awesomegen validate`
 
 Parses and validates the configuration with the same loader the generator
@@ -609,6 +612,7 @@ covered by tests:
 * the configuration file and the scraped page are size limited;
 * unknown keys in the configuration file are rejected;
 * a list that produces no entries is an error, so an empty README is never written over a curated one;
+* every list is rendered before the first one is written, so a failed run leaves every README untouched;
 * the text that comes from GitHub - descriptions, licences and topics - is escaped before it is written, and only `http` and `https` URLs are rendered.
 
 ---

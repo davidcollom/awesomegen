@@ -108,6 +108,9 @@ func runGenerateWith(cmd *cobra.Command, opts *options, gen *generator) error {
 	}
 
 	enr := render.Enricher{GH: gen.GH, Now: gen.Clock, Log: log}
+	// Every list is rendered before the first one is written, so that a list
+	// that cannot be rendered leaves every README untouched.
+	rendered := make([]string, len(cfg.Lists))
 
 	for i, list := range cfg.Lists {
 		// 1) scrape owner/repo slugs from your Star List
@@ -138,12 +141,12 @@ func runGenerateWith(cmd *cobra.Command, opts *options, gen *generator) error {
 				// A lookup that failed for a reason that has nothing to
 				// do with the repository - an expired token, a rate
 				// limit, a server error, a network problem - leaves the
-				// list unknown rather than curated. The README is not
+				// list unknown rather than curated. No README is
 				// written, and the message names the file that is left
 				// alone.
 				var unavailable *render.UnavailableError
 				if errors.As(err, &unavailable) {
-					return fmt.Errorf("%w: refusing to overwrite %s with an unknown list", err, outputs[i])
+					return fmt.Errorf("%w: refusing to overwrite %s with an unknown list; no README was written", err, outputs[i])
 				}
 				return err
 			}
@@ -157,7 +160,7 @@ func runGenerateWith(cmd *cobra.Command, opts *options, gen *generator) error {
 			// stopped instead, and the message says how to continue: the
 			// repositories have to be removed from the configuration.
 			if lookupErr.AllFailed() {
-				return fmt.Errorf("every repository of the list could not be loaded (%d of %d): refusing to overwrite %s with an incomplete README; remove the repositories from the configuration to render the rest of the list",
+				return fmt.Errorf("every repository of the list could not be loaded (%d of %d): refusing to overwrite %s with an incomplete README; no README was written; remove the repositories from the configuration to render the rest of the list",
 					lookupErr.Failed, lookupErr.Total, outputs[i])
 			}
 		}
@@ -173,20 +176,24 @@ func runGenerateWith(cmd *cobra.Command, opts *options, gen *generator) error {
 				if name == "" {
 					name = list.Title
 				}
-				return fmt.Errorf("list %q produced no entries; refusing to overwrite %s with an empty README", name, outputs[i])
+				return fmt.Errorf("list %q produced no entries; refusing to overwrite %s with an empty README; no README was written", name, outputs[i])
 			}
 			return err
 		}
 
+		rendered[i] = md
+	}
+
+	for i, list := range cfg.Lists {
 		out := outputs[i]
-		if err := writeOutput(cmd, root, out, md, opts.dryRun); err != nil {
+		if err := writeOutput(cmd, root, out, rendered[i], opts.dryRun); err != nil {
 			return err
 		}
 		if opts.dryRun {
-			log.Info("dry run, the README was not written", "file", out, "bytes", len(md))
+			log.Info("dry run, the README was not written", "file", out, "bytes", len(rendered[i]))
 			continue
 		}
-		log.Info("wrote README", "file", out, "title", list.Title, "bytes", len(md))
+		log.Info("wrote README", "file", out, "title", list.Title, "bytes", len(rendered[i]))
 	}
 	return nil
 }

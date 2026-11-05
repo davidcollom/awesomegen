@@ -23,27 +23,38 @@ import (
 // fakeScraper returns a fixed list of repositories, whatever it is asked
 // for.
 type fakeScraper struct {
-	repos []string
-	err   error
+	repos       []string
+	reposBySlug map[string][]string
+	err         error
 }
 
-func (s fakeScraper) ListRepos(_ context.Context, _, _ string) ([]string, error) {
+func (s fakeScraper) ListRepos(_ context.Context, _, slug string) ([]string, error) {
 	if s.err != nil {
 		return nil, s.err
+	}
+	if repos, ok := s.reposBySlug[slug]; ok {
+		return repos, nil
 	}
 	return s.repos, nil
 }
 
 // fakeGHClient returns a fixed repository metadata, whatever it is asked
 // for.
+//
+// The metadata of a single repository can be overridden with metas, so that
+// a test can tell the repositories of a list apart.
 type fakeGHClient struct {
-	meta github.RepoMeta
-	err  error
+	meta  github.RepoMeta
+	metas map[string]github.RepoMeta
+	err   error
 }
 
-func (c fakeGHClient) GetRepo(_ context.Context, _ string) (github.RepoMeta, error) {
+func (c fakeGHClient) GetRepo(_ context.Context, repo string) (github.RepoMeta, error) {
 	if c.err != nil {
 		return github.RepoMeta{}, c.err
+	}
+	if m, ok := c.metas[repo]; ok {
+		return m, nil
 	}
 	return c.meta, nil
 }
@@ -117,7 +128,10 @@ func TestGenerateEmptyListNamesTheList(t *testing.T) {
 			gen := testGenerator(t)
 			gen.Scraper = fakeScraper{}
 			out, err := runGenerateWithArgs(t, &options{configPath: cfgPath}, gen)
-			require.EqualError(t, err, "list \""+tc.want+"\" produced no entries; refusing to overwrite "+existing+" with an empty README")
+			// The message names the list and says that nothing was written:
+			// every list is rendered before the first one is written, so a
+			// list that cannot be rendered leaves every README untouched.
+			require.EqualError(t, err, "list \""+tc.want+"\" produced no entries; refusing to overwrite "+existing+" with an empty README; no README was written")
 			require.Empty(t, out)
 
 			data, err := os.ReadFile(existing)
@@ -185,6 +199,113 @@ func TestGenerateWritesTheDocument(t *testing.T) {
 	require.NoError(t, err)
 	require.Contains(t, string(data), "# Tools")
 	require.Contains(t, string(data), "cli/cli")
+}
+
+// TestGenerateWritesEveryListToItsOwnFile makes sure that every list is
+// written to the file of its own.
+//
+// The write phase writes the document that was rendered for a list to the
+// output path of the same list. A test that holds a single list cannot tell
+// that apart from a write that puts the first document in every file, so
+// the test holds two lists and checks that each file carries the title and
+// the entries of its own list.
+func TestGenerateWritesEveryListToItsOwnFile(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := writeConfigIn(t, dir, `lists:
+  - slug: tools
+    title: "Tools"
+    output: "tools.md"
+    sources:
+      - user: davidcollom
+        slug: tools
+  - slug: extra
+    title: "Extra"
+    output: "extra.md"
+    sources:
+      - user: davidcollom
+        slug: extra
+`)
+
+	pushed := time.Date(2026, time.January, 2, 3, 4, 5, 0, time.UTC)
+	gen := testGenerator(t)
+	gen.Scraper = fakeScraper{reposBySlug: map[string][]string{
+		"tools": {"cli/cli"},
+		"extra": {"golang/go"},
+	}}
+	gen.GH = fakeGHClient{metas: map[string]github.RepoMeta{
+		"cli/cli": {
+			FullName:    "cli/cli",
+			URL:         "https://github.com/cli/cli",
+			Description: "GitHub's official command line tool",
+			Stars:       30000,
+			License:     "MIT",
+			Topics:      []string{"cli", "git"},
+			PushedAt:    pushed,
+		},
+		"golang/go": {
+			FullName:    "golang/go",
+			URL:         "https://github.com/golang/go",
+			Description: "The Go programming language",
+			Stars:       120000,
+			License:     "BSD-3-Clause",
+			Topics:      []string{"go"},
+			PushedAt:    pushed,
+		},
+	}}
+
+	_, err := runGenerateWithArgs(t, &options{configPath: cfgPath}, gen)
+	require.NoError(t, err)
+
+	// Every file holds the document of its own list and nothing else.
+	tools, err := os.ReadFile(filepath.Join(dir, "tools.md"))
+	require.NoError(t, err)
+	require.Contains(t, string(tools), "# Tools")
+	require.Contains(t, string(tools), "cli/cli")
+	require.NotContains(t, string(tools), "# Extra")
+	require.NotContains(t, string(tools), "golang/go")
+
+	extra, err := os.ReadFile(filepath.Join(dir, "extra.md"))
+	require.NoError(t, err)
+	require.Contains(t, string(extra), "# Extra")
+	require.Contains(t, string(extra), "golang/go")
+	require.NotContains(t, string(extra), "# Tools")
+	require.NotContains(t, string(extra), "cli/cli")
+}
+
+func TestGenerateDoesNotWriteAnyListWhenALaterListCannotBeRendered(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := writeConfigIn(t, dir, `lists:
+  - slug: tools
+    title: "Tools"
+    sources:
+      - user: davidcollom
+        slug: tools
+  - slug: empty
+    title: "Empty"
+    sources:
+      - user: davidcollom
+        slug: empty
+`)
+
+	for _, name := range []string{"tools.md", "empty.md"} {
+		err := os.WriteFile(filepath.Join(dir, name), []byte("original\n"), 0o600)
+		require.NoError(t, err)
+	}
+
+	gen := testGenerator(t)
+	gen.Scraper = fakeScraper{
+		repos:       []string{"cli/cli"},
+		reposBySlug: map[string][]string{"empty": nil},
+	}
+
+	_, err := runGenerateWithArgs(t, &options{configPath: cfgPath}, gen)
+	require.ErrorContains(t, err, `list "empty" produced no entries`)
+
+	for _, name := range []string{"tools.md", "empty.md"} {
+		data, readErr := os.ReadFile(filepath.Join(dir, name))
+		require.NoError(t, readErr)
+		require.Equal(t, "original\n", string(data), "%s must remain unchanged", name)
+	}
 }
 
 // TestGenerateRefusesToOverwriteWithAnUnknownList makes sure that a lookup
