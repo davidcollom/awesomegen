@@ -80,6 +80,16 @@ The full reference, including a complete workflow, the inputs and the
 permissions the workflow needs, is in
 [GitHub Action reference](#github-action-reference).
 
+### Repositories that use this action
+
+The action generates the README of these repositories, from the Star Lists
+of their owner:
+
+| Repository                                                       | Star List                                             |
+| ---------------------------------------------------------------- | ----------------------------------------------------- |
+| [davidcollom/awesome-tools](https://github.com/davidcollom/awesome-tools) | [tools](https://github.com/davidcollom/stars/lists/tools) |
+| [davidcollom/awesome-k8s-finops](https://github.com/davidcollom/awesome-k8s-finops) | [finops-tools](https://github.com/davidcollom/stars/lists/finops-tools) |
+
 ---
 
 ## Quick start
