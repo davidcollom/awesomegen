@@ -12,9 +12,9 @@
 #     - `sign` signs the artefacts with cosign (keyless, via OIDC) and
 #       records a GitHub build provenance attestation.
 #     - `publish` publishes the release and moves the tags of the container
-#       image that consumers use. The tags only move once every other job
-#       has succeeded, so a consumer never pulls an image whose release was
-#       not completed.
+#       image and of the repository that consumers use. The tags only move
+#       once every other job has succeeded, so a consumer never pulls an
+#       image or an action whose release was not completed.
 # * `id-token: write` is granted to the `sign` job only. Keyless signing and
 #   artifact attestations both need an OIDC token, and no other job needs
 #   one.
@@ -387,10 +387,14 @@ jobs:
     # that long: the job fails instead of waiting.
     timeout-minutes: 15
     permissions:
-      # Promote the draft to a published release.
+      # Promote the draft to a published release and move the git tags.
       contents: write
       # Move the tags of the container image.
       packages: write
+    env:
+      # The repository is named explicitly in the steps that do not check
+      # the sources out, so that "gh" does not have to guess it.
+      GH_REPO: ${{ github.repository }}
     steps:
       - name: Publish the release
         env:
@@ -467,3 +471,65 @@ jobs:
           # image travel with the promoted tags.
           docker buildx imagetools create "${tags[@]}" "${staging}"
           echo "Promoted ${staging} to ${promoted}"
+
+      - name: Promote the git tags
+        # The git tags are the ones a consumer of the action resolves:
+        # "uses: davidcollom/awesomegen@v1" reads the action.yml from the
+        # commit that the tag v1 points at. The tag has to follow the
+        # release, otherwise a consumer keeps an old action.yml - for
+        # example the Docker action, which cannot write the README back
+        # into the repository because the image runs as a non-root user.
+        #
+        # The tags are moved after the release is published, so that a
+        # consumer never gets an action whose release was not completed.
+        # The price is a short window in which the release exists but the
+        # git tags still point at the previous release: a run of this job
+        # that fails between the two steps is repaired by running it again,
+        # because both steps can be repeated.
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+
+          # The commit of the release. The tag is resolved through the
+          # commit endpoint, so that an annotated tag is peeled to the
+          # commit it points at.
+          sha="$(gh api "repos/${REPOSITORY}/commits/${TAG}" --jq '.sha')"
+          if [ -z "${sha}" ]; then
+            echo "::error::The commit of ${TAG} could not be resolved"
+            exit 1
+          fi
+          echo "The release ${TAG} is the commit ${sha}"
+
+          # A pre-release only moves its own version tag: "latest", "vMAJOR"
+          # and "vMAJOR.MINOR" keep pointing at the last stable release, so
+          # that a release candidate is never installed as the current
+          # version. This is the same rule that the container tags follow,
+          # so that the action and the image always agree about what the
+          # current version is.
+          tags=()
+          case "${TAG}" in
+            *-*)
+              echo "::notice::${TAG} is a pre-release: only its version tag is moved"
+              ;;
+            *)
+              # "v1.2.3" becomes "v1" and "v1.2".
+              tags=("${TAG%%.*}" "${TAG%.*}")
+              ;;
+          esac
+
+          for tag in ${tags[@]+"${tags[@]}"}; do
+            if gh api "repos/${REPOSITORY}/git/ref/tags/${tag}" >/dev/null 2>&1; then
+              # The tag exists and is moved. "force" is needed because the
+              # commit it is moved to is not its ancestor.
+              gh api --method PATCH "repos/${REPOSITORY}/git/refs/tags/${tag}" \
+                -f sha="${sha}" -F force=true >/dev/null
+              echo "Moved the tag ${tag} to ${sha}"
+            else
+              gh api --method POST "repos/${REPOSITORY}/git/refs" \
+                -f ref="refs/tags/${tag}" -f sha="${sha}" >/dev/null
+              echo "Created the tag ${tag} at ${sha}"
+            fi
+          done
