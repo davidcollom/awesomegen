@@ -85,10 +85,21 @@ permissions the workflow needs, is in
 The action generates the README of these repositories, from the Star Lists
 of their owner:
 
-| Repository                                                       | Star List                                             |
-| ---------------------------------------------------------------- | ----------------------------------------------------- |
-| [davidcollom/awesome-tools](https://github.com/davidcollom/awesome-tools) | [tools](https://github.com/davidcollom/stars/lists/tools) |
+| Repository | Star List |
+| ---------- | --------- |
+| [davidcollom/awesome-ai-toolkits](https://github.com/davidcollom/awesome-ai-toolkits) | [ai-toolkits](https://github.com/davidcollom/stars/lists/ai-toolkits) |
+| [davidcollom/awesome-devx](https://github.com/davidcollom/awesome-devx) | [devx](https://github.com/davidcollom/stars/lists/devx) |
+| [davidcollom/awesome-golang-libraries](https://github.com/davidcollom/awesome-golang-libraries) | [golang-libraries](https://github.com/davidcollom/stars/lists/golang-libraries) |
+| [davidcollom/awesome-home-assistant](https://github.com/davidcollom/awesome-home-assistant) | [home-assistant](https://github.com/davidcollom/stars/lists/home-assistant) |
+| [davidcollom/awesome-ingress-migration-tools](https://github.com/davidcollom/awesome-ingress-migration-tools) | [ingress-migration-tools](https://github.com/davidcollom/stars/lists/ingress-migration-tools) |
+| [davidcollom/awesome-k8s-controllers-operators](https://github.com/davidcollom/awesome-k8s-controllers-operators) | [k8s-controllers-operators](https://github.com/davidcollom/stars/lists/k8s-controllers-operators) |
 | [davidcollom/awesome-k8s-finops](https://github.com/davidcollom/awesome-k8s-finops) | [finops-tools](https://github.com/davidcollom/stars/lists/finops-tools) |
+| [davidcollom/awesome-kubectl-plugins](https://github.com/davidcollom/awesome-kubectl-plugins) | [kubectl-plugins](https://github.com/davidcollom/stars/lists/kubectl-plugins) |
+| [davidcollom/awesome-mcp-servers](https://github.com/davidcollom/awesome-mcp-servers) | [mcp-servers](https://github.com/davidcollom/stars/lists/mcp-servers) |
+| [davidcollom/awesome-metrics-exporters](https://github.com/davidcollom/awesome-metrics-exporters) | [metrics-exporters](https://github.com/davidcollom/stars/lists/metrics-exporters) |
+| [davidcollom/awesome-servicemesh-tools](https://github.com/davidcollom/awesome-servicemesh-tools) | [servicemesh-tools](https://github.com/davidcollom/stars/lists/servicemesh-tools) |
+| [davidcollom/awesome-terraform-modules](https://github.com/davidcollom/awesome-terraform-modules) | [terraform-modules](https://github.com/davidcollom/stars/lists/terraform-modules) |
+| [davidcollom/awesome-tools](https://github.com/davidcollom/awesome-tools) | [tools](https://github.com/davidcollom/stars/lists/tools) |
 
 ---
 
