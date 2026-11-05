@@ -93,6 +93,40 @@ const oneListConfig = `lists:
         slug: tools
 `
 
+// TestGenerateEmptyListNamesTheList covers source-only configurations, whose
+// list slug is optional, while preserving the name used by legacy lists.
+func TestGenerateEmptyListNamesTheList(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		slug string
+		want string
+	}{
+		{"without slug", "", "Tools"},
+		{"with slug", "tools", "tools"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			body := oneListConfig
+			if tc.slug != "" {
+				body = strings.Replace(body, "  - title:", "  - slug: "+tc.slug+"\n    title:", 1)
+			}
+			cfgPath := writeConfigIn(t, dir, body)
+			existing := filepath.Join(dir, "README.md")
+			require.NoError(t, os.WriteFile(existing, []byte("curated\n"), 0o600))
+
+			gen := testGenerator(t)
+			gen.Scraper = fakeScraper{}
+			out, err := runGenerateWithArgs(t, &options{configPath: cfgPath}, gen)
+			require.EqualError(t, err, "list \""+tc.want+"\" produced no entries; refusing to overwrite "+existing+" with an empty README")
+			require.Empty(t, out)
+
+			data, err := os.ReadFile(existing)
+			require.NoError(t, err)
+			require.Equal(t, "curated\n", string(data))
+		})
+	}
+}
+
 func TestGenerateDryRunPrintsTheDocumentAndWritesNothing(t *testing.T) {
 	// The whole generation runs offline, with a fake scraper and a fake
 	// GitHub client.
