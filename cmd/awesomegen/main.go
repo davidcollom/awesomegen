@@ -50,17 +50,16 @@ func init() {
 }
 
 func main() {
-	os.Exit(runCLI())
-}
-
-func runCLI() int {
 	// Cancel the run on SIGINT/SIGTERM so a scheduled job can be stopped
 	// promptly instead of running to completion.
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	os.Exit(runCLI(ctx, newRootCommand(), stop))
+}
+
+func runCLI(ctx context.Context, root *cobra.Command, stop context.CancelFunc) int {
 	// Restore normal signal handling before main exits the process.
 	defer stop()
 
-	root := newRootCommand()
 	if err := root.ExecuteContext(ctx); err != nil {
 		// The error has already been reported by cobra, so the exit code
 		// is all that is left to do.
