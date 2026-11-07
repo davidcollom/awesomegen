@@ -340,9 +340,8 @@ func TestGenerateRefusesToOverwriteWithAnUnknownList(t *testing.T) {
 	opts := &options{configPath: cfgPath}
 	_, err := runGenerateWithArgs(t, opts, gen)
 	require.Error(t, err)
-	// The message says what happened and which file was left alone.
-	require.ErrorContains(t, err, "refusing to overwrite")
-	require.ErrorContains(t, err, existing)
+	// The message identifies the list and the file that was left alone.
+	require.ErrorContains(t, err, `refusing to overwrite `+existing+` with unknown list "Tools"`)
 
 	// The curated file is still there.
 	data, err := os.ReadFile(existing)
@@ -378,7 +377,7 @@ func TestGenerateRefusesToOverwriteWhenEveryRepositoryIsGone(t *testing.T) {
 	opts := &options{configPath: cfgPath}
 	_, err := runGenerateWithArgs(t, opts, gen)
 	require.Error(t, err)
-	require.ErrorContains(t, err, "every repository of the list could not be loaded")
+	require.ErrorContains(t, err, `every repository of list "Tools" could not be loaded`)
 	require.ErrorContains(t, err, "remove the repositories from the configuration")
 
 	// The curated file is still there.

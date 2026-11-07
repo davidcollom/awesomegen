@@ -142,11 +142,11 @@ func runGenerateWith(cmd *cobra.Command, opts *options, gen *generator) error {
 				// do with the repository - an expired token, a rate
 				// limit, a server error, a network problem - leaves the
 				// list unknown rather than curated. No README is
-				// written, and the message names the file that is left
-				// alone.
+				// written, and the message names the list and the file
+				// that is left alone.
 				var unavailable *render.UnavailableError
 				if errors.As(err, &unavailable) {
-					return fmt.Errorf("%w: refusing to overwrite %s with an unknown list; no README was written", err, outputs[i])
+					return fmt.Errorf("%w: refusing to overwrite %s with unknown list %q; no README was written", err, outputs[i], listName(list))
 				}
 				return err
 			}
@@ -160,8 +160,8 @@ func runGenerateWith(cmd *cobra.Command, opts *options, gen *generator) error {
 			// stopped instead, and the message says how to continue: the
 			// repositories have to be removed from the configuration.
 			if lookupErr.AllFailed() {
-				return fmt.Errorf("every repository of the list could not be loaded (%d of %d): refusing to overwrite %s with an incomplete README; no README was written; remove the repositories from the configuration to render the rest of the list",
-					lookupErr.Failed, lookupErr.Total, outputs[i])
+				return fmt.Errorf("every repository of list %q could not be loaded (%d of %d): refusing to overwrite %s with an incomplete README; no README was written; remove the repositories from the configuration to render the rest of the list",
+					listName(list), lookupErr.Failed, lookupErr.Total, outputs[i])
 			}
 		}
 
@@ -172,11 +172,7 @@ func runGenerateWith(cmd *cobra.Command, opts *options, gen *generator) error {
 			// repository, and committing that empty result would wipe out a
 			// curated list.
 			if errors.Is(err, render.ErrNoEntries) {
-				name := list.Slug
-				if name == "" {
-					name = list.Title
-				}
-				return fmt.Errorf("list %q produced no entries; refusing to overwrite %s with an empty README; no README was written", name, outputs[i])
+				return fmt.Errorf("list %q produced no entries; refusing to overwrite %s with an empty README; no README was written", listName(list), outputs[i])
 			}
 			return err
 		}
@@ -196,6 +192,14 @@ func runGenerateWith(cmd *cobra.Command, opts *options, gen *generator) error {
 		log.Info("wrote README", "file", out, "title", list.Title, "bytes", len(rendered[i]))
 	}
 	return nil
+}
+
+// listName keeps diagnostics consistent for lists whose slug is optional.
+func listName(list config.List) string {
+	if list.Slug != "" {
+		return list.Slug
+	}
+	return list.Title
 }
 
 // writeOutput writes the rendered document to its destination, or prints it

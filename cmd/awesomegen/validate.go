@@ -71,11 +71,7 @@ func runValidate(cmd *cobra.Command, opts *options) error {
 	fmt.Fprintf(&b, "%d list(s)\n", len(cfg.Lists))
 
 	for i, list := range cfg.Lists {
-		name := list.Slug
-		if name == "" {
-			name = list.Title
-		}
-		fmt.Fprintf(&b, "\n- %s\n", name)
+		fmt.Fprintf(&b, "\n- %s\n", listName(list))
 		fmt.Fprintf(&b, "  title:       %s\n", list.Title)
 		for _, src := range list.Sources {
 			fmt.Fprintf(&b, "  source:      %s/%s\n", src.User, src.Slug)
