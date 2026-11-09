@@ -38,8 +38,11 @@ type HTMLScraper struct {
 }
 
 func NewScraper(log logr.Logger) *HTMLScraper {
+	client := newHTTPClient(log).StandardClient()
+	// This includes every attempt and backoff, not just one connection.
+	client.Timeout = 10 * time.Minute
 	return &HTMLScraper{
-		http:    &http.Client{Timeout: 15 * time.Second},
+		http:    client,
 		log:     log,
 		BaseURL: "https://github.com",
 	}

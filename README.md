@@ -23,6 +23,14 @@ no entry while it advertises further pages, and a list that yields no
 repository at all are errors: the run stops instead of writing a list that
 lost entries without a word.
 
+Star-list requests retry transient network errors, HTTP 429 and server errors
+with HashiCorp `go-retryablehttp`. Delays grow from 2 seconds to 2 minutes,
+with up to 10 retries and a 10-minute deadline per page (including waits).
+`Retry-After` is honoured within that deadline; cancellation stops waiting.
+Permanent failures such as HTTP 403 or a missing list are not retried.
+The action also uses exponential backoff for release lookup and downloads,
+with a retry window of 9 minutes and a 60-second limit per transfer.
+
 ## Features
 
 * Reads your public Star Lists - no manual copy and paste of repository names.
