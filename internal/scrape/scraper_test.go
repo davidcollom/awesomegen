@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-logr/stdr"
 	"github.com/stretchr/testify/require"
@@ -201,8 +202,10 @@ func TestListReposServerError(t *testing.T) {
 	sc := scrape.NewScraper(stdr.New(nil))
 	sc.BaseURL = srv.URL
 
-	_, err := sc.ListRepos(context.Background(), "owner", "list")
-	require.Error(t, err)
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	_, err := sc.ListRepos(ctx, "owner", "list")
+	require.ErrorIs(t, err, context.DeadlineExceeded)
 }
 
 func TestListReposRejectsOversizedPage(t *testing.T) {

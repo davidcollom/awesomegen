@@ -46,7 +46,10 @@ runs:
         version="${INPUT_VERSION}"
         if [ -z "${version}" ] || [ "${version}" = "latest" ]; then
           echo "Resolving the latest awesomegen release"
-          curl_args=(-fsSL --retry 3 --retry-delay 2 -H "Accept: application/vnd.github+json")
+          # Leave retry-delay unset: curl doubles the delay between retries.
+          # Budget nine minutes for retries, plus at most one final minute
+          # for the transfer. Permanent HTTP errors still fail immediately.
+          curl_args=(-fsSL --retry 10 --retry-max-time 540 --connect-timeout 15 --max-time 60 -H "Accept: application/vnd.github+json")
           if [ -n "${INPUT_TOKEN}" ]; then
             curl_args+=(-H "Authorization: Bearer ${INPUT_TOKEN}")
           fi
@@ -122,8 +125,10 @@ runs:
         mkdir -p "${workdir}"
         cd "${workdir}"
 
-        curl -fsSL --retry 3 --retry-delay 2 -o "${archive}" "${base_url}/${archive}"
-        curl -fsSL --retry 3 --retry-delay 2 -o checksums.txt "${base_url}/checksums.txt"
+        # Use curl's exponential backoff, with the same bounded budget as
+        # release resolution. Each download has its own retry window.
+        curl -fsSL --retry 10 --retry-max-time 540 --connect-timeout 15 --max-time 60 -o "${archive}" "${base_url}/${archive}"
+        curl -fsSL --retry 10 --retry-max-time 540 --connect-timeout 15 --max-time 60 -o checksums.txt "${base_url}/checksums.txt"
 
         # Verify the download against the published checksum file.
         sha256_of() {
