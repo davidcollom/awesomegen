@@ -1,1 +1,4 @@
-* @davidcollom
+/.github/workflows/  @davidcollom
+/internal/render/    @davidcollom
+/internal/config/    @davidcollom
+/docs/               @davidcollom
