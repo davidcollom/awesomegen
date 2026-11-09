@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -11,6 +12,30 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/require"
 )
+
+func TestRunCLIReturnsStatusAndStopsContext(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		arg  string
+		code int
+	}{
+		{"success", "--version", 0},
+		{"error", "--unknown-option", 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := newRootCommand()
+			var out bytes.Buffer
+			root.SetOut(&out)
+			root.SetErr(&out)
+			root.SetArgs([]string{tc.arg})
+			ctx, stop := context.WithCancel(context.Background())
+			t.Cleanup(stop)
+
+			require.Equal(t, tc.code, runCLI(ctx, root, stop))
+			require.ErrorIs(t, ctx.Err(), context.Canceled)
+		})
+	}
+}
 
 // run executes the command tree with the given arguments and returns what it
 // wrote to the standard output.

@@ -53,20 +53,19 @@ func main() {
 	// Cancel the run on SIGINT/SIGTERM so a scheduled job can be stopped
 	// promptly instead of running to completion.
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	// The deferred stop has to run before the process exits: os.Exit does
-	// not run the deferred calls, so the signal handler would stay
-	// installed until the process is gone anyway. Restoring the default
-	// behaviour explicitly keeps the shutdown order predictable.
+	os.Exit(runCLI(ctx, newRootCommand(), stop))
+}
+
+func runCLI(ctx context.Context, root *cobra.Command, stop context.CancelFunc) int {
+	// Restore normal signal handling before main exits the process.
 	defer stop()
 
-	root := newRootCommand()
 	if err := root.ExecuteContext(ctx); err != nil {
 		// The error has already been reported by cobra, so the exit code
-		// is all that is left to do. stop() is called first, because
-		// os.Exit does not run the deferred calls.
-		stop()
-		os.Exit(1)
+		// is all that is left to do.
+		return 1
 	}
+	return 0
 }
 
 // options holds the settings that the command line accepts.
