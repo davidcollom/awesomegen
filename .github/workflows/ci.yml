@@ -63,7 +63,7 @@ jobs:
         # The version comes from the `go` directive of go.mod, so the lint
         # always runs with the Go version the module is built with and
         # never drifts away from it.
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version-file: go.mod
 
@@ -155,7 +155,7 @@ jobs:
       - name: Set up Go
         # The version comes from the `go` directive of go.mod, so that the
         # tests always run with the version the module is built with.
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version-file: go.mod
 
@@ -204,7 +204,7 @@ jobs:
       - name: Set up Go
         # The version comes from the `go` directive of go.mod, so that the
         # build always runs with the Go version the module is built with.
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version-file: go.mod
 
